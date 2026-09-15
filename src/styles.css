@@ -199,6 +199,9 @@ button {
   overflow-y: auto;
 }
 .viewer .bar {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -207,8 +210,19 @@ button {
 .viewer .bar .cam { font-weight: 600; font-size: 17px; }
 .viewer .bar .when { color: var(--sage); font-size: 13px; }
 .viewer .close { color: var(--sage); font-size: 26px; line-height: 1; padding: 4px 8px; }
-.viewer .imgwrap { position: relative; }
-.viewer img { width: 100%; display: block; }
+.viewer .imgwrap {
+  position: relative;
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+}
+.viewer img {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
 .viewer .nav {
   position: absolute;
   top: 0;
@@ -218,13 +232,21 @@ button {
 .viewer .nav.prev { left: 0; }
 .viewer .nav.next { right: 0; }
 .viewer .meta {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
   display: flex;
   gap: 18px;
   color: var(--sage);
   font-size: 13px;
   padding: 10px 16px 0;
 }
-.viewer .tagpanel { padding: 14px 16px calc(env(safe-area-inset-bottom) + 24px); }
+.viewer .tagpanel {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 14px 16px calc(env(safe-area-inset-bottom) + 24px);
+}
 .viewer .tagpanel h3 {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 16px;

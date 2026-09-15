@@ -40,6 +40,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       .from('reveal_photos')
       .update(patch)
       .eq('photo_name', photo.photo_name)
+      .eq('camera_id', photo.camera_id)
     setSaving(false)
     if (!error) {
       setSaved(true)

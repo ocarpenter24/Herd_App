@@ -24,7 +24,7 @@ export default function Feed() {
   const [cameras, setCameras] = useState({})
   const [photos, setPhotos] = useState([])
   const [urls, setUrls] = useState({}) // storage path -> signed url
-  const [camFilter, setCamFilter] = useState(null)
+  const [camFilter, setCamFilter] = useState([])
   const [reviewOnly, setReviewOnly] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -62,7 +62,7 @@ export default function Feed() {
         .select('photo_name,camera_id,taken_at,thumb_path,storage_path,tags,reviewed,battery,signal')
         .order('taken_at', { ascending: false })
         .range(offset, offset + PAGE - 1)
-      if (camFilter) q = q.eq('camera_id', camFilter)
+      if (camFilter.length) q = q.in('camera_id', camFilter)
       if (reviewOnly) q = q.eq('reviewed', false)
       const { data, error } = await q
       if (error) {
@@ -182,17 +182,21 @@ export default function Feed() {
             Needs review
           </button>
           <button
-            className={'chip' + (!camFilter ? ' on' : '')}
-            onClick={() => setCamFilter(null)}
+            className={'chip' + (camFilter.length === 0 ? ' on' : '')}
+            onClick={() => setCamFilter([])}
           >
             All cameras
           </button>
           {camList.map((c) => (
             <button
               key={c.camera_id}
-              className={'chip' + (camFilter === c.camera_id ? ' on' : '')}
+              className={'chip' + (camFilter.includes(c.camera_id) ? ' on' : '')}
               onClick={() =>
-                setCamFilter(camFilter === c.camera_id ? null : c.camera_id)
+                setCamFilter((f) =>
+                  f.includes(c.camera_id)
+                    ? f.filter((x) => x !== c.camera_id)
+                    : [...f, c.camera_id]
+                )
               }
             >
               {c.name || c.camera_id}
