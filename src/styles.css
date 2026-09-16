@@ -438,3 +438,22 @@ button {
   padding: 9px 10px;
 }
 .page { min-height: 100dvh; }
+
+
+/* ---------- Match suggestions ---------- */
+.sugcol { display: flex; flex-direction: column; gap: 8px; }
+.sugrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.sugtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sugname { font-weight: 600; color: var(--blaze); }
+.sugwhy { color: var(--sage); font-size: 13px; }
+.sugbtns { display: flex; gap: 8px; flex-shrink: 0; }
+.sugbtns .save { padding: 8px 14px; }

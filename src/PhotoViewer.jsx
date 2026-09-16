@@ -13,6 +13,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
   const [assigned, setAssigned] = useState([]) // sighting rows
   const [pickerOpen, setPickerOpen] = useState(false)
   const [newBuck, setNewBuck] = useState('')
+  const [suggestions, setSuggestions] = useState([])
 
   useEffect(() => {
     setTags(photo.tags || [])
@@ -29,6 +30,14 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       .eq('camera_id', photo.camera_id)
       .eq('photo_name', photo.photo_name)
       .then(({ data }) => setAssigned(data || []))
+    supabase
+      .from('buck_match_suggestions')
+      .select('id,box_index,box,buck_id,label,confidence,reasoning')
+      .eq('camera_id', photo.camera_id)
+      .eq('photo_name', photo.photo_name)
+      .eq('status', 'pending')
+      .order('box_index')
+      .then(({ data }) => setSuggestions(data || []))
     if (!buckCache) {
       supabase
         .from('bucks')
@@ -98,6 +107,33 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
     }
   }
 
+  async function acceptSuggestion(sug) {
+    const { data } = await supabase
+      .from('buck_sightings')
+      .insert({
+        buck_id: sug.buck_id,
+        camera_id: photo.camera_id,
+        photo_name: photo.photo_name,
+        box: sug.box,
+      })
+      .select('id,buck_id')
+      .single()
+    if (data) setAssigned((a) => [...a, data])
+    await supabase
+      .from('buck_match_suggestions')
+      .update({ status: 'accepted' })
+      .eq('id', sug.id)
+    setSuggestions((s) => s.filter((x) => x.id !== sug.id))
+  }
+
+  async function rejectSuggestion(sug) {
+    await supabase
+      .from('buck_match_suggestions')
+      .update({ status: 'rejected' })
+      .eq('id', sug.id)
+    setSuggestions((s) => s.filter((x) => x.id !== sug.id))
+  }
+
   const assignedIds = new Set(assigned.map((s) => s.buck_id))
   const buckName = (id) => bucks.find((b) => b.id === id)?.name || '…'
 
@@ -157,6 +193,49 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
           </button>
           {saved && <span className="reviewed-note">Marked reviewed</span>}
         </div>
+
+        {suggestions.length > 0 && (
+          <>
+            <h3 className="assignhead">Suggested matches</h3>
+            <div className="sugcol">
+              {suggestions.map((s) => (
+                <div key={s.id} className="sugrow">
+                  <div className="sugtext">
+                    <span className="sugname">
+                      {s.label === 'match'
+                        ? `${buckName(s.buck_id)}? ${Math.round((s.confidence || 0) * 100)}%`
+                        : s.label === 'new_buck'
+                        ? 'New buck?'
+                        : 'Unsure'}
+                    </span>
+                    <span className="sugwhy">{s.reasoning}</span>
+                  </div>
+                  {s.label === 'match' ? (
+                    <div className="sugbtns">
+                      <button className="save" onClick={() => acceptSuggestion(s)}>✓</button>
+                      <button className="caughtup" onClick={() => rejectSuggestion(s)}>✕</button>
+                    </div>
+                  ) : (
+                    <div className="sugbtns">
+                      <button
+                        className="caughtup"
+                        onClick={() => {
+                          setPickerOpen(true)
+                          rejectSuggestion(s)
+                        }}
+                      >
+                        Assign…
+                      </button>
+                      <button className="caughtup" onClick={() => rejectSuggestion(s)}>
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <h3 className="assignhead">Bucks in this photo</h3>
         <div className="tagrow">

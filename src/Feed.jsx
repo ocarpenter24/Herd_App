@@ -26,6 +26,7 @@ export default function Feed() {
   const [urls, setUrls] = useState({}) // storage path -> signed url
   const [camFilter, setCamFilter] = useState([])
   const [reviewOnly, setReviewOnly] = useState(false)
+  const [sugOnly, setSugOnly] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(true)
   const [newCount, setNewCount] = useState(0)
@@ -57,13 +58,16 @@ export default function Feed() {
 
   const fetchPage = useCallback(
     async (offset) => {
+      const cols =
+        'photo_name,camera_id,taken_at,thumb_path,storage_path,tags,reviewed,battery,signal'
       let q = supabase
         .from('reveal_photos')
-        .select('photo_name,camera_id,taken_at,thumb_path,storage_path,tags,reviewed,battery,signal')
+        .select(sugOnly ? cols + ',buck_match_suggestions!inner(id)' : cols)
         .order('taken_at', { ascending: false })
         .range(offset, offset + PAGE - 1)
       if (camFilter.length) q = q.in('camera_id', camFilter)
       if (reviewOnly) q = q.eq('reviewed', false)
+      if (sugOnly) q = q.eq('buck_match_suggestions.status', 'pending')
       const { data, error } = await q
       if (error) {
         console.error(error)
@@ -71,7 +75,7 @@ export default function Feed() {
       }
       return data || []
     },
-    [camFilter, reviewOnly]
+    [camFilter, reviewOnly, sugOnly]
   )
 
   // Sign thumbnail URLs in one batch per page
@@ -180,6 +184,12 @@ export default function Feed() {
             onClick={() => setReviewOnly(!reviewOnly)}
           >
             Needs review
+          </button>
+          <button
+            className={'chip review' + (sugOnly ? ' on' : '')}
+            onClick={() => setSugOnly(!sugOnly)}
+          >
+            Buck matches
           </button>
           <button
             className={'chip' + (camFilter.length === 0 ? ' on' : '')}
