@@ -4,6 +4,8 @@ import { TAGS } from './tags.js'
 
 let buckCache = null
 
+const SUG_COLORS = ['#4fc3f7', '#ffd54f', '#e56b1f', '#ab47bc', '#66bb6a', '#ef5350']
+
 export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, onSaved }) {
   const [url, setUrl] = useState(null)
   const [tags, setTags] = useState(photo.tags || [])
@@ -163,7 +165,33 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       </div>
 
       <div className="imgwrap">
-        {url ? <img src={url} alt="" /> : <div className="spinner">Loading…</div>}
+        {url ? (
+          <span className="imgbox">
+            <img src={url} alt="" />
+            {suggestions.map((s, i) => {
+              const b = s.box?.box
+              if (!b) return null
+              const color = SUG_COLORS[i % SUG_COLORS.length]
+              return (
+                <span
+                  key={s.id}
+                  className="detbox"
+                  style={{
+                    left: b[0] * 100 + '%',
+                    top: b[1] * 100 + '%',
+                    width: (b[2] - b[0]) * 100 + '%',
+                    height: (b[3] - b[1]) * 100 + '%',
+                    borderColor: color,
+                  }}
+                >
+                  <i style={{ background: color }}>{i + 1}</i>
+                </span>
+              )
+            })}
+          </span>
+        ) : (
+          <div className="spinner">Loading…</div>
+        )}
         {onPrev && <button className="nav prev" onClick={onPrev} aria-label="Previous" />}
         {onNext && <button className="nav next" onClick={onNext} aria-label="Next" />}
       </div>
@@ -198,10 +226,18 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
           <>
             <h3 className="assignhead">Suggested matches</h3>
             <div className="sugcol">
-              {suggestions.map((s) => (
-                <div key={s.id} className="sugrow">
+              {suggestions.map((s, i) => (
+                <div
+                  key={s.id}
+                  className="sugrow"
+                  style={{ borderLeft: '4px solid ' + SUG_COLORS[i % SUG_COLORS.length] }}
+                >
                   <div className="sugtext">
-                    <span className="sugname">
+                    <span
+                      className="sugname"
+                      style={{ color: SUG_COLORS[i % SUG_COLORS.length] }}
+                    >
+                      {i + 1} · 
                       {s.label === 'match'
                         ? `${buckName(s.buck_id)}? ${Math.round((s.confidence || 0) * 100)}%`
                         : s.label === 'new_buck'
