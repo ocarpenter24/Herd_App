@@ -279,3 +279,162 @@ button {
 .reviewed-note { color: var(--sage); font-size: 13px; }
 
 .spinner { text-align: center; color: var(--sage); padding: 40px; }
+
+
+/* ---------- Tab bar ---------- */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  background: color-mix(in srgb, var(--pine) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sage);
+}
+.tabbar button.on { color: var(--blaze); }
+.tabbar .ico { font-size: 20px; line-height: 1; }
+.feed { padding-bottom: calc(env(safe-area-inset-bottom) + 84px); }
+
+/* ---------- Bucks ---------- */
+.newbuck { display: flex; gap: 8px; padding: 10px 0 2px; }
+.newbuck input {
+  flex: 1;
+  font: inherit;
+  color: var(--bone);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+}
+.newbuck input:focus { border-color: var(--blaze); }
+.newbuck button {
+  background: var(--blaze);
+  color: #16130f;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0 18px;
+}
+.newbuck button:disabled { background: var(--raised); color: var(--sage); }
+.bucklist { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
+.buckcard {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  align-items: center;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.buckcard .antler {
+  grid-row: 1 / 3;
+  font-size: 26px;
+  color: var(--blaze);
+  background: var(--raised);
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.buckcard .bname { font-weight: 600; font-size: 17px; }
+.buckcard .bmeta { color: var(--sage); font-size: 13px; }
+.backbtn { color: var(--sage); font-size: 16px; font-weight: 600; }
+.notesbox { display: flex; gap: 10px; align-items: flex-start; padding-top: 12px; }
+.notesbox textarea {
+  flex: 1;
+  font: inherit;
+  font-size: 15px;
+  color: var(--bone);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+}
+.notesbox textarea:focus { border-color: var(--blaze); }
+.assignhead { margin-top: 18px; }
+.picker {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.picker .newbuck { width: 100%; padding: 4px 0 0; }
+
+/* ---------- Map ---------- */
+.mappage { display: flex; flex-direction: column; height: 100dvh; }
+.mapwrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: calc(env(safe-area-inset-bottom) + 58px);
+}
+.map { position: absolute; inset: 0; background: #0a0d0b; }
+.camtray {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 500;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 12px;
+  background: linear-gradient(transparent, rgba(10, 13, 11, 0.85));
+  scrollbar-width: none;
+}
+.camtray::-webkit-scrollbar { display: none; }
+.camtray .chip { background: var(--pine); }
+.camtray .chip.unpinned { color: var(--blaze); border-color: var(--blaze-dim); }
+.pinpanel {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 600;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pintitle { font-weight: 600; }
+.pintitle .hint { color: var(--blaze); font-weight: 500; font-size: 13px; }
+.facingrow { display: flex; align-items: center; gap: 12px; color: var(--sage); font-size: 14px; }
+.facingrow input { flex: 1; accent-color: var(--blaze); }
+.pinrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pinrow select {
+  font: inherit;
+  color: var(--bone);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+.page { min-height: 100dvh; }
