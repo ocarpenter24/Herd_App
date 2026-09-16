@@ -39,9 +39,16 @@ function destPoint(lat, lng, deg, dist) {
   return [(la2 * 180) / Math.PI, (lo2 * 180) / Math.PI]
 }
 
-function coneLatLngs(lat, lng, facing, spread = 32, dist = 140) {
+const YD = 0.9144 // yards -> meters
+const DEFAULT_DIST = 150 // yards
+const DEFAULT_FOV = 64 // degrees
+
+function coneLatLngs(lat, lng, facing, fovDeg, distYd) {
+  const half = fovDeg / 2
+  const dist = distYd * YD
   const pts = [[lat, lng]]
-  for (let a = facing - spread; a <= facing + spread; a += 8) {
+  const step = Math.max(4, half / 5)
+  for (let a = facing - half; a <= facing + half + 0.01; a += step) {
     pts.push(destPoint(lat, lng, a, dist))
   }
   pts.push([lat, lng])
@@ -67,7 +74,7 @@ export default function MapPage() {
     const [{ data: cams }, { data: props }] = await Promise.all([
       supabase
         .from('reveal_cameras')
-        .select('camera_id,name,shared,pin_lat,pin_lng,facing_deg,property_id')
+        .select('camera_id,name,shared,pin_lat,pin_lng,facing_deg,cone_dist,cone_spread,property_id')
         .order('name'),
       supabase.from('properties').select('id,name').order('name'),
     ])
@@ -121,10 +128,12 @@ export default function MapPage() {
       const lat = isDraft ? draft.pin_lat : c.pin_lat
       const lng = isDraft ? draft.pin_lng : c.pin_lng
       const facing = isDraft ? draft.facing_deg : c.facing_deg
+      const dist = (isDraft ? draft.cone_dist : c.cone_dist) ?? DEFAULT_DIST
+      const fov = (isDraft ? draft.cone_spread : c.cone_spread) ?? DEFAULT_FOV
       if (lat == null || lng == null) continue
       bounds.push([lat, lng])
       if (facing != null) {
-        L.polygon(coneLatLngs(lat, lng, Number(facing)), {
+        L.polygon(coneLatLngs(lat, lng, Number(facing), Number(fov), Number(dist)), {
           color: '#e56b1f',
           weight: 1,
           fillColor: '#e56b1f',
@@ -154,6 +163,8 @@ export default function MapPage() {
       pin_lat: c.pin_lat,
       pin_lng: c.pin_lng,
       facing_deg: c.facing_deg,
+      cone_dist: c.cone_dist,
+      cone_spread: c.cone_spread,
       property_id: c.property_id,
     })
   }
@@ -166,6 +177,8 @@ export default function MapPage() {
         pin_lat: d.pin_lat,
         pin_lng: d.pin_lng,
         facing_deg: d.facing_deg,
+        cone_dist: d.cone_dist,
+        cone_spread: d.cone_spread,
         property_id: d.property_id,
       })
       .eq('camera_id', d.camera_id)
@@ -234,16 +247,47 @@ export default function MapPage() {
               {draft.pin_lat == null && <span className="hint"> — tap the map to drop the pin</span>}
             </div>
             {draft.pin_lat != null && (
-              <label className="facingrow">
-                Facing {draft.facing_deg != null ? Math.round(draft.facing_deg) + '°' : '—'}
-                <input
-                  type="range"
-                  min="0"
-                  max="359"
-                  value={draft.facing_deg ?? 0}
-                  onChange={(e) => setDraft({ ...draft, facing_deg: Number(e.target.value) })}
-                />
-              </label>
+              <>
+                <label className="facingrow">
+                  Facing {draft.facing_deg != null ? Math.round(draft.facing_deg) + '°' : '—'}
+                  <input
+                    type="range"
+                    min="0"
+                    max="359"
+                    value={draft.facing_deg ?? 0}
+                    onChange={(e) => setDraft({ ...draft, facing_deg: Number(e.target.value) })}
+                  />
+                </label>
+                {draft.facing_deg != null && (
+                  <>
+                    <label className="facingrow">
+                      Reach {Math.round(draft.cone_dist ?? 150)} yd
+                      <input
+                        type="range"
+                        min="20"
+                        max="400"
+                        step="5"
+                        value={draft.cone_dist ?? 150}
+                        onChange={(e) =>
+                          setDraft({ ...draft, cone_dist: Number(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label className="facingrow">
+                      View angle {Math.round(draft.cone_spread ?? 64)}°
+                      <input
+                        type="range"
+                        min="15"
+                        max="130"
+                        value={draft.cone_spread ?? 64}
+                        onChange={(e) =>
+                          setDraft({ ...draft, cone_spread: Number(e.target.value) })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+              </>
             )}
             <div className="pinrow">
               <select
