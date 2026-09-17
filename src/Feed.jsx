@@ -50,7 +50,7 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
       let q = supabase
         .from('reveal_photos')
         .select(sugOnly ? cols + ',buck_match_suggestions!inner(id)' : cols)
-        .order('taken_at', { ascending: false })
+        .order('taken_at', { ascending: false, nullsFirst: false })
         .range(offset, offset + PAGE - 1)
       if (camFilter.length) {
         q = q.in('camera_id', camFilter)
