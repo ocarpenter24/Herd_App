@@ -16,12 +16,15 @@ function dayLabel(iso) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-export default function Feed() {
-  const [cameras, setCameras] = useState({})
+const GRID_SIZES = [148, 210, 300, 460, 0] // 0 = single column
+
+export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter }) {
   const [photos, setPhotos] = useState([])
   const [urls, setUrls] = useState({})
-  const [camFilter, setCamFilter] = useState([])
   const [reviewOnly, setReviewOnly] = useState(false)
+  const [gridSize, setGridSize] = useState(
+    Number(localStorage.getItem('herd_grid_size') || 0)
+  )
   const [sugOnly, setSugOnly] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -29,17 +32,6 @@ export default function Feed() {
   const [viewing, setViewing] = useState(null)
   const lastSeenRef = useRef(localStorage.getItem(LAST_SEEN_KEY))
   const lastSignedRef = useRef(Date.now())
-
-  useEffect(() => {
-    supabase
-      .from('reveal_cameras')
-      .select('camera_id,name,shared')
-      .then(({ data }) => {
-        const map = {}
-        for (const c of data || []) map[c.camera_id] = c
-        setCameras(map)
-      })
-  }, [])
 
   useEffect(() => {
     const since = lastSeenRef.current
@@ -60,7 +52,12 @@ export default function Feed() {
         .select(sugOnly ? cols + ',buck_match_suggestions!inner(id)' : cols)
         .order('taken_at', { ascending: false })
         .range(offset, offset + PAGE - 1)
-      if (camFilter.length) q = q.in('camera_id', camFilter)
+      if (camFilter.length) {
+        q = q.in('camera_id', camFilter)
+      } else {
+        const enabled = cameras.filter((c) => c.enabled !== false).map((c) => c.camera_id)
+        if (enabled.length && enabled.length < cameras.length) q = q.in('camera_id', enabled)
+      }
       if (reviewOnly) q = q.eq('reviewed', false)
       if (sugOnly) q = q.eq('buck_match_suggestions.status', 'pending')
       const { data, error } = await q
@@ -70,7 +67,7 @@ export default function Feed() {
       }
       return data || []
     },
-    [camFilter, reviewOnly, sugOnly]
+    [camFilter, reviewOnly, sugOnly, cameras]
   )
 
   const signPaths = useCallback(async (rows) => {
@@ -159,9 +156,19 @@ export default function Feed() {
   }, [photos])
 
   const lastSeen = lastSeenRef.current
-  const camList = Object.values(cameras).sort((a, b) =>
-    (a.name || '').localeCompare(b.name || '')
-  )
+  const camMap = {}
+  for (const c of cameras) camMap[c.camera_id] = c
+  const enabledCams = cameras.filter((c) => c.enabled !== false)
+  const gridPx = GRID_SIZES[gridSize]
+  const gridStyle =
+    gridPx === 0
+      ? { gridTemplateColumns: '1fr', maxWidth: 720, margin: '0 auto' }
+      : { gridTemplateColumns: `repeat(auto-fill, minmax(${gridPx}px, 1fr))` }
+
+  function setSize(v) {
+    setGridSize(v)
+    localStorage.setItem('herd_grid_size', String(v))
+  }
 
   return (
     <>
@@ -186,17 +193,24 @@ export default function Feed() {
           >
             All cameras
           </button>
-          {camList.map((c) => (
+          <label className="sizeslider" title="Photo size">
+            <span>▦</span>
+            <input
+              type="range"
+              min="0"
+              max="4"
+              value={gridSize}
+              onChange={(e) => setSize(Number(e.target.value))}
+            />
+            <span>▣</span>
+          </label>
+        </div>
+        <div className="chiprow mobilecams">
+          {enabledCams.map((c) => (
             <button
               key={c.camera_id}
               className={'chip' + (camFilter.includes(c.camera_id) ? ' on' : '')}
-              onClick={() =>
-                setCamFilter((f) =>
-                  f.includes(c.camera_id)
-                    ? f.filter((x) => x !== c.camera_id)
-                    : [...f, c.camera_id]
-                )
-              }
+              onClick={() => toggleFilter(c.camera_id)}
             >
               {c.name || c.camera_id}
               {c.shared ? ' ↗' : ''}
@@ -222,7 +236,7 @@ export default function Feed() {
         {groups.map((g) => (
           <section key={g.label + g.items[0]}>
             <div className="dayhead">{g.label}</div>
-            <div className="grid">
+            <div className="grid" style={gridStyle}>
               {g.items.map((i) => {
                 const p = photos[i]
                 const src = urls[p.thumb_path || p.storage_path]
@@ -252,7 +266,7 @@ export default function Feed() {
       {viewing !== null && photos[viewing] && (
         <PhotoViewer
           photo={photos[viewing]}
-          camera={cameras[photos[viewing].camera_id]}
+          camera={camMap[photos[viewing].camera_id]}
           onClose={() => setViewing(null)}
           onPrev={viewing > 0 ? () => setViewing(viewing - 1) : null}
           onNext={viewing < photos.length - 1 ? () => setViewing(viewing + 1) : null}
