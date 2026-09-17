@@ -17,9 +17,11 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
   const [pickerOpen, setPickerOpen] = useState(false)
   const [openChange, setOpenChange] = useState(null) // suggestion id with picker open
   const [newBuck, setNewBuck] = useState('')
+  const [keep, setKeep] = useState(photo.keep === true)
 
   useEffect(() => {
     setTags(photo.tags || [])
+    setKeep(photo.keep === true)
     setSaved(false)
     setUrl(null)
     setPickerOpen(false)
@@ -30,7 +32,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       .then(({ data }) => setUrl(data?.signedUrl || null))
     supabase
       .from('buck_sightings')
-      .select('id,buck_id,box')
+      .select('id,buck_id,box,hires_path')
       .eq('camera_id', photo.camera_id)
       .eq('photo_name', photo.photo_name)
       .then(({ data }) => setAssigned(data || []))
@@ -170,6 +172,23 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
     markResolved(sug.id, { type: 'dismissed' })
   }
 
+  async function toggleKeep() {
+    const next = !keep
+    setKeep(next)
+    await supabase
+      .from('reveal_photos')
+      .update({ keep: next })
+      .eq('photo_name', photo.photo_name)
+      .eq('camera_id', photo.camera_id)
+  }
+
+  async function openHires(s) {
+    const { data } = await supabase.storage
+      .from('trail-photos')
+      .createSignedUrl(s.hires_path, 60 * 10)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
   const assignedIds = new Set(assigned.map((s) => s.buck_id))
   const buckName = (id) => bucks.find((b) => b.id === id)?.name || '…'
 
@@ -265,9 +284,18 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
             </div>
             <div className="when">{when}</div>
           </div>
-          <button className="close" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              className={'chip' + (keep ? ' accent on' : '')}
+              title="Protect this photo from auto-cleanup"
+              onClick={toggleKeep}
+            >
+              {keep ? 'Kept ★' : 'Keep'}
+            </button>
+            <button className="close" onClick={onClose} aria-label="Close">
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="meta">
@@ -403,9 +431,16 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
           <h3 className="seghead">Bucks in this photo</h3>
           <div className="tagrow">
             {assigned.map((s) => (
-              <button key={s.id} className="chip accent on" onClick={() => unassign(s)}>
-                {buckName(s.buck_id)} ✕
-              </button>
+              <span key={s.id} style={{ display: 'inline-flex', gap: 4 }}>
+                <button className="chip accent on" onClick={() => unassign(s)}>
+                  {buckName(s.buck_id)} ✕
+                </button>
+                {s.hires_path && (
+                  <button className="chip" title="Open full-resolution crop" onClick={() => openHires(s)}>
+                    HD
+                  </button>
+                )}
+              </span>
             ))}
             <button className="chip" onClick={() => setPickerOpen(!pickerOpen)}>
               {pickerOpen ? 'Close' : '+ Assign'}

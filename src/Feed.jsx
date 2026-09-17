@@ -46,10 +46,11 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
   const fetchPage = useCallback(
     async (offset) => {
       const cols =
-        'photo_name,camera_id,taken_at,thumb_path,storage_path,tags,reviewed,battery,signal'
+        'photo_name,camera_id,taken_at,thumb_path,storage_path,tags,reviewed,battery,signal,keep'
       let q = supabase
         .from('reveal_photos')
         .select(sugOnly ? cols + ',buck_match_suggestions!inner(id)' : cols)
+        .eq('archived', false)
         .order('taken_at', { ascending: false, nullsFirst: false })
         .range(offset, offset + PAGE - 1)
       if (camFilter.length) {
