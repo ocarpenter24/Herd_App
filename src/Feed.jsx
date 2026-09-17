@@ -28,6 +28,7 @@ export default function Feed() {
   const [newCount, setNewCount] = useState(0)
   const [viewing, setViewing] = useState(null)
   const lastSeenRef = useRef(localStorage.getItem(LAST_SEEN_KEY))
+  const lastSignedRef = useRef(Date.now())
 
   useEffect(() => {
     supabase
@@ -73,6 +74,7 @@ export default function Feed() {
   )
 
   const signPaths = useCallback(async (rows) => {
+    lastSignedRef.current = Date.now()
     const paths = rows.map((p) => p.thumb_path || p.storage_path).filter(Boolean)
     if (!paths.length) return
     const { data } = await supabase.storage
@@ -105,10 +107,29 @@ export default function Feed() {
 
   async function loadMore() {
     const rows = await fetchPage(photos.length)
-    setPhotos((p) => [...p, ...rows])
+    setPhotos((p) => {
+      const seen = new Set(p.map((x) => x.camera_id + '|' + x.photo_name))
+      return [...p, ...rows.filter((r) => !seen.has(r.camera_id + '|' + r.photo_name))]
+    })
     setHasMore(rows.length === PAGE)
     signPaths(rows)
   }
+
+  // Signed image URLs last 6h; refresh them if the tab sits open or
+  // gets re-focused after they've gone stale
+  useEffect(() => {
+    function refresh() {
+      if (photos.length && Date.now() - lastSignedRef.current > 4 * 3600 * 1000) {
+        signPaths(photos)
+      }
+    }
+    const iv = setInterval(refresh, 15 * 60 * 1000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [photos, signPaths])
 
   function markCaughtUp() {
     const now = new Date().toISOString()

@@ -39,16 +39,14 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       .eq('status', 'pending')
       .order('box_index')
       .then(({ data }) => setSuggestions(data || []))
-    if (!buckCache) {
-      supabase
-        .from('bucks')
-        .select('id,name,status')
-        .order('name')
-        .then(({ data }) => {
-          buckCache = data || []
-          setBucks(buckCache)
-        })
-    }
+    supabase
+      .from('bucks')
+      .select('id,name,status')
+      .order('name')
+      .then(({ data }) => {
+        buckCache = data || []
+        setBucks(buckCache)
+      })
   }, [photo])
 
   useEffect(() => {

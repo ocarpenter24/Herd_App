@@ -60,6 +60,7 @@ export default function MapPage() {
   const mapRef = useRef(null)
   const layerRef = useRef(null)
   const draftRef = useRef(null)
+  const fitKeyRef = useRef(null)
   const [ready, setReady] = useState(false)
   const [cameras, setCameras] = useState([])
   const [properties, setProperties] = useState([])
@@ -151,8 +152,10 @@ export default function MapPage() {
         .on('click', () => startEdit(c))
         .addTo(layer)
     }
-    if (bounds.length && !draft) {
+    const fitKey = propFilter || 'all'
+    if (bounds.length && !draft && fitKeyRef.current !== fitKey) {
       mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 })
+      fitKeyRef.current = fitKey
     }
   }, [ready, cameras, propFilter, draft]) // eslint-disable-line
 
