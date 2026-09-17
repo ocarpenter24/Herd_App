@@ -11,7 +11,7 @@ export default function Bucks() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('bucks')
-      .select('id,name,status,notes,buck_sightings(count)')
+      .select('id,name,status,notes,ai_description,buck_sightings(count)')
       .order('name')
     setBucks(data || [])
   }, [])
@@ -36,9 +36,9 @@ export default function Bucks() {
     const { data } = await supabase
       .from('bucks')
       .insert({ name })
-      .select('id,name,status,notes')
+      .select('id,name,status,notes,ai_description')
       .single()
-    if (data) setOpenBuck({ ...data, buck_sightings: [{ count: 0 }] })
+    if (data) setOpenBuck(data)
     load()
   }
 
@@ -55,43 +55,57 @@ export default function Bucks() {
     )
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <div className="row1">
-          <h1>Bucks</h1>
-        </div>
-        <form className="newbuck" onSubmit={createBuck}>
+    <>
+      <header className="pagehead">
+        <h2>Bucks</h2>
+        <div className="spacer" />
+        <form className="newbuck" style={{ width: 280 }} onSubmit={createBuck}>
           <input
+            className="field"
             placeholder="Name a new buck…"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
-          <button disabled={!newName.trim()}>Add</button>
+          <button className="btn primary sm" disabled={!newName.trim()}>
+            Add
+          </button>
         </form>
       </header>
-      <main className="feed">
+      <main className="content">
         {bucks === null && <div className="spinner">Loading…</div>}
         {bucks && bucks.length === 0 && (
           <div className="empty">
-            No bucks named yet.
-            <br />
-            Open a buck photo in the Feed and hit "Assign bucks", or add one above.
+            No bucks named yet. Assign one from a photo in the Feed, or add one above.
           </div>
         )}
-        <div className="bucklist">
-          {(bucks || []).map((b) => (
-            <button key={b.id} className="buckcard" onClick={() => setOpenBuck(b)}>
-              <span className="antler">⑂</span>
-              <span className="bname">{b.name}</span>
-              <span className="bmeta">
-                {b.buck_sightings?.[0]?.count ?? 0} sightings
-                {b.status !== 'active' ? ` · ${b.status}` : ''}
-              </span>
-            </button>
-          ))}
-        </div>
+        {bucks && bucks.length > 0 && (
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ width: '22%' }}>Name</th>
+                <th style={{ width: 110 }}>Status</th>
+                <th style={{ width: 100 }}>Sightings</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bucks.map((b) => (
+                <tr key={b.id} className="row" onClick={() => setOpenBuck(b)}>
+                  <td className="primarycell">{b.name}</td>
+                  <td>
+                    <span className={'status ' + b.status}>{b.status}</span>
+                  </td>
+                  <td className="mutedcell">{b.buck_sightings?.[0]?.count ?? 0}</td>
+                  <td className="mutedcell">
+                    {(b.notes || b.ai_description || '').slice(0, 110)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </main>
-    </div>
+    </>
   )
 }
 
@@ -145,64 +159,96 @@ function BuckPage({ buck, cameras, onBack }) {
   }
 
   const photos = (sightings || []).map((s) => s.reveal_photos)
+  const lastSeen = photos[0]?.taken_at
+    ? new Date(photos[0].taken_at).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+      })
+    : '—'
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <div className="row1">
-          <button className="backbtn" onClick={onBack}>
-            ‹ Bucks
-          </button>
-          <h1>{buck.name}</h1>
-          <button className="caughtup" onClick={deleteBuck}>
-            Delete
-          </button>
+    <>
+      <header className="pagehead">
+        <button className="btn quiet sm" onClick={onBack}>
+          ‹ Bucks
+        </button>
+        <div className="buckhead">
+          <h2>{buck.name}</h2>
+          <span className={'status ' + status}>{status}</span>
+          <span className="mutedcell" style={{ color: 'var(--muted)', fontSize: 12.5 }}>
+            {photos.length} sightings · last seen {lastSeen}
+          </span>
         </div>
-        <div className="chips">
-          {['active', 'harvested', 'missing'].map((s) => (
-            <button
-              key={s}
-              className={'chip' + (status === s ? ' on' : '')}
-              onClick={() => {
-                setStatus(s)
-                setSavedNote(false)
-              }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <div className="spacer" />
+        <button className="btn quiet sm danger" onClick={deleteBuck}>
+          Delete
+        </button>
       </header>
-      <main className="feed">
-        <div className="notesbox">
-          <textarea
-            rows={3}
-            placeholder="Notes — points, spread, where he beds, history…"
-            value={notes}
-            onChange={(e) => {
-              setNotes(e.target.value)
-              setSavedNote(false)
-            }}
-          />
-          <button className="save" onClick={saveDetails} disabled={savedNote}>
-            {savedNote ? 'Saved' : 'Save'}
-          </button>
-        </div>
-        {sightings === null && <div className="spinner">Loading sightings…</div>}
-        {sightings && sightings.length === 0 && (
-          <div className="empty">
-            No sightings yet — assign him from photos in the Feed.
+      <main className="content">
+        <div className="bucklayout">
+          <div>
+            {sightings === null && <div className="spinner">Loading sightings…</div>}
+            {sightings && sightings.length === 0 && (
+              <div className="empty">No sightings yet — assign him from photos in the Feed.</div>
+            )}
+            <div className="grid">
+              {photos.map((p, i) => {
+                const src = urls[p.thumb_path || p.storage_path]
+                return (
+                  <button
+                    key={p.camera_id + p.photo_name}
+                    className="cell"
+                    onClick={() => setViewing(i)}
+                  >
+                    {src ? <img src={src} alt="" loading="lazy" /> : null}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        )}
-        <div className="grid">
-          {photos.map((p, i) => {
-            const src = urls[p.thumb_path || p.storage_path]
-            return (
-              <button key={p.camera_id + p.photo_name} className="cell" onClick={() => setViewing(i)}>
-                {src ? <img src={src} alt="" loading="lazy" /> : null}
-              </button>
-            )
-          })}
+          <aside className="buckside">
+            <div>
+              <h3 className="seghead">Status</h3>
+              <div className="tagrow">
+                {['active', 'harvested', 'missing'].map((s) => (
+                  <button
+                    key={s}
+                    className={'chip' + (status === s ? ' on' : '')}
+                    onClick={() => {
+                      setStatus(s)
+                      setSavedNote(false)
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="seghead">Notes</h3>
+              <textarea
+                className="field"
+                rows={5}
+                placeholder="Points, spread, where he beds, history…"
+                value={notes}
+                onChange={(e) => {
+                  setNotes(e.target.value)
+                  setSavedNote(false)
+                }}
+              />
+              <div className="savebar">
+                <button className="btn primary sm" onClick={saveDetails} disabled={savedNote}>
+                  {savedNote ? 'Saved' : 'Save'}
+                </button>
+              </div>
+            </div>
+            {buck.ai_description && (
+              <div>
+                <h3 className="seghead">AI profile</h3>
+                <p className="aidesc">{buck.ai_description}</p>
+              </div>
+            )}
+          </aside>
         </div>
       </main>
       {viewing !== null && photos[viewing] && (
@@ -218,6 +264,6 @@ function BuckPage({ buck, cameras, onBack }) {
           onSaved={() => {}}
         />
       )}
-    </div>
+    </>
   )
 }

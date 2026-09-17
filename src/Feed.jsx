@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase.js'
 import PhotoViewer from './PhotoViewer.jsx'
 
-const PAGE = 60
+const PAGE = 80
 const LAST_SEEN_KEY = 'herd_last_seen'
 
 function dayLabel(iso) {
@@ -13,27 +13,22 @@ function dayLabel(iso) {
   const same = (a, b) => a.toDateString() === b.toDateString()
   if (same(d, today)) return 'Today'
   if (same(d, yest)) return 'Yesterday'
-  return d.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 export default function Feed() {
   const [cameras, setCameras] = useState({})
   const [photos, setPhotos] = useState([])
-  const [urls, setUrls] = useState({}) // storage path -> signed url
+  const [urls, setUrls] = useState({})
   const [camFilter, setCamFilter] = useState([])
   const [reviewOnly, setReviewOnly] = useState(false)
   const [sugOnly, setSugOnly] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(true)
   const [newCount, setNewCount] = useState(0)
-  const [viewing, setViewing] = useState(null) // index into photos
+  const [viewing, setViewing] = useState(null)
   const lastSeenRef = useRef(localStorage.getItem(LAST_SEEN_KEY))
 
-  // Cameras once
   useEffect(() => {
     supabase
       .from('reveal_cameras')
@@ -45,7 +40,6 @@ export default function Feed() {
       })
   }, [])
 
-  // New-since-last-visit count
   useEffect(() => {
     const since = lastSeenRef.current
     if (!since) return
@@ -78,11 +72,8 @@ export default function Feed() {
     [camFilter, reviewOnly, sugOnly]
   )
 
-  // Sign thumbnail URLs in one batch per page
   const signPaths = useCallback(async (rows) => {
-    const paths = rows
-      .map((p) => p.thumb_path || p.storage_path)
-      .filter((p) => p && p.length)
+    const paths = rows.map((p) => p.thumb_path || p.storage_path).filter(Boolean)
     if (!paths.length) return
     const { data } = await supabase.storage
       .from('trail-photos')
@@ -95,13 +86,12 @@ export default function Feed() {
     })
   }, [])
 
-  // Initial load + reload on filter change
   useEffect(() => {
     let alive = true
     setLoading(true)
     setPhotos([])
     setHasMore(true)
-    fetchPage(0).then(async (rows) => {
+    fetchPage(0).then((rows) => {
       if (!alive) return
       setPhotos(rows)
       setHasMore(rows.length === PAGE)
@@ -133,15 +123,14 @@ export default function Feed() {
     )
   }
 
-  // Group by day for section headers
   const groups = useMemo(() => {
     const out = []
-    let curLabel = null
+    let cur = null
     for (let i = 0; i < photos.length; i++) {
       const label = photos[i].taken_at ? dayLabel(photos[i].taken_at) : 'Undated'
-      if (label !== curLabel) {
+      if (label !== cur) {
         out.push({ label, items: [] })
-        curLabel = label
+        cur = label
       }
       out[out.length - 1].items.push(i)
     }
@@ -155,38 +144,17 @@ export default function Feed() {
 
   return (
     <>
-      <header className="topbar">
-        <div className="row1">
-          <h1>Herd</h1>
-          <div>
-            <span className={'newcount' + (newCount ? '' : ' zero')}>
-              {lastSeen
-                ? newCount
-                  ? `${newCount} new since last visit`
-                  : 'All caught up'
-                : 'First visit'}
-            </span>
-            {newCount > 0 && (
-              <button className="caughtup" onClick={markCaughtUp}>
-                Mark seen
-              </button>
-            )}
-            {!lastSeen && (
-              <button className="caughtup" onClick={markCaughtUp}>
-                Start tracking
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="chips">
+      <header className="pagehead">
+        <h2>Feed</h2>
+        <div className="chiprow">
           <button
-            className={'chip review' + (reviewOnly ? ' on' : '')}
+            className={'chip accent' + (reviewOnly ? ' on' : '')}
             onClick={() => setReviewOnly(!reviewOnly)}
           >
             Needs review
           </button>
           <button
-            className={'chip review' + (sugOnly ? ' on' : '')}
+            className={'chip accent' + (sugOnly ? ' on' : '')}
             onClick={() => setSugOnly(!sugOnly)}
           >
             Buck matches
@@ -214,20 +182,25 @@ export default function Feed() {
             </button>
           ))}
         </div>
+        <div className="spacer" />
+        <span className={'newnote' + (newCount ? '' : ' zero')}>
+          {lastSeen ? (newCount ? `${newCount} new` : 'Caught up') : ''}
+        </span>
+        {(newCount > 0 || !lastSeen) && (
+          <button className="btn sm" onClick={markCaughtUp}>
+            {lastSeen ? 'Mark seen' : 'Start tracking'}
+          </button>
+        )}
       </header>
 
-      <main className="feed">
+      <main className="content">
         {loading && <div className="spinner">Loading photos…</div>}
         {!loading && photos.length === 0 && (
-          <div className="empty">
-            No photos here yet.
-            <br />
-            The sync runs hourly — check back after the next pass.
-          </div>
+          <div className="empty">Nothing here — the sync runs every 15 minutes.</div>
         )}
         {groups.map((g) => (
           <section key={g.label + g.items[0]}>
-            <div className="day">{g.label}</div>
+            <div className="dayhead">{g.label}</div>
             <div className="grid">
               {g.items.map((i) => {
                 const p = photos[i]
@@ -236,7 +209,7 @@ export default function Feed() {
                 const tagline = (p.tags || []).join(' · ')
                 const isBuck = (p.tags || []).includes('Buck')
                 return (
-                  <button key={p.photo_name} className="cell" onClick={() => setViewing(i)}>
+                  <button key={p.camera_id + p.photo_name} className="cell" onClick={() => setViewing(i)}>
                     {src ? <img src={src} alt="" loading="lazy" /> : null}
                     {isNew && <span className="dot" />}
                     {tagline && (
@@ -249,7 +222,7 @@ export default function Feed() {
           </section>
         ))}
         {!loading && hasMore && (
-          <button className="loadmore" onClick={loadMore}>
+          <button className="btn loadmore" onClick={loadMore}>
             Load more
           </button>
         )}

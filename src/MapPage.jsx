@@ -201,12 +201,10 @@ export default function MapPage() {
   }
 
   return (
-    <div className="page mappage">
-      <header className="topbar">
-        <div className="row1">
-          <h1>Map</h1>
-        </div>
-        <div className="chips">
+    <div className="mappage-content">
+      <header className="pagehead">
+        <h2>Map</h2>
+        <div className="chiprow">
           <button
             className={'chip' + (!propFilter ? ' on' : '')}
             onClick={() => setPropFilter(null)}
@@ -227,110 +225,97 @@ export default function MapPage() {
           </button>
         </div>
         {addingProp && (
-          <form className="newbuck" onSubmit={createProperty}>
+          <form className="newbuck" style={{ width: 260 }} onSubmit={createProperty}>
             <input
+              className="field"
               placeholder="Property name…"
               value={newProp}
               onChange={(e) => setNewProp(e.target.value)}
             />
-            <button disabled={!newProp.trim()}>Add</button>
+            <button className="btn primary sm" disabled={!newProp.trim()}>Add</button>
           </form>
         )}
       </header>
 
-      <div className="mapwrap">
+      <div className="maplayout">
         <div ref={mapEl} className="map" />
-        {draft && (
-          <div className="pinpanel">
-            <div className="pintitle">
-              {draft.name || draft.camera_id}
-              {draft.pin_lat == null && <span className="hint"> — tap the map to drop the pin</span>}
-            </div>
+        <aside className="mapside">
+        {draft ? (
+          <div className="railsec">
+            <h3 className="seghead">Camera setup</h3>
+            <div style={{ fontWeight: 600 }}>{draft.name || draft.camera_id}</div>
+            {draft.pin_lat == null && (
+              <div className="hintline">Click the map to drop the pin</div>
+            )}
             {draft.pin_lat != null && (
               <>
-                <label className="facingrow">
-                  Facing {draft.facing_deg != null ? Math.round(draft.facing_deg) + '°' : '—'}
+                <label className="sliderrow">
+                  <span>Facing {draft.facing_deg != null ? Math.round(draft.facing_deg) + '°' : '—'}</span>
                   <input
-                    type="range"
-                    min="0"
-                    max="359"
+                    type="range" min="0" max="359"
                     value={draft.facing_deg ?? 0}
                     onChange={(e) => setDraft({ ...draft, facing_deg: Number(e.target.value) })}
                   />
                 </label>
                 {draft.facing_deg != null && (
                   <>
-                    <label className="facingrow">
-                      Reach {Math.round(draft.cone_dist ?? 150)} yd
+                    <label className="sliderrow">
+                      <span>Reach {Math.round(draft.cone_dist ?? 150)} yd</span>
                       <input
-                        type="range"
-                        min="20"
-                        max="400"
-                        step="5"
+                        type="range" min="20" max="400" step="5"
                         value={draft.cone_dist ?? 150}
-                        onChange={(e) =>
-                          setDraft({ ...draft, cone_dist: Number(e.target.value) })
-                        }
+                        onChange={(e) => setDraft({ ...draft, cone_dist: Number(e.target.value) })}
                       />
                     </label>
-                    <label className="facingrow">
-                      View angle {Math.round(draft.cone_spread ?? 64)}°
+                    <label className="sliderrow">
+                      <span>View {Math.round(draft.cone_spread ?? 64)}°</span>
                       <input
-                        type="range"
-                        min="15"
-                        max="130"
+                        type="range" min="15" max="130"
                         value={draft.cone_spread ?? 64}
-                        onChange={(e) =>
-                          setDraft({ ...draft, cone_spread: Number(e.target.value) })
-                        }
+                        onChange={(e) => setDraft({ ...draft, cone_spread: Number(e.target.value) })}
                       />
                     </label>
                   </>
                 )}
+                <label className="sliderrow">
+                  <span>Property</span>
+                  <select
+                    className="field"
+                    style={{ flex: 1 }}
+                    value={draft.property_id || ''}
+                    onChange={(e) => setDraft({ ...draft, property_id: e.target.value || null })}
+                  >
+                    <option value="">None</option>
+                    {properties.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
               </>
             )}
-            <div className="pinrow">
-              <select
-                value={draft.property_id || ''}
-                onChange={(e) =>
-                  setDraft({ ...draft, property_id: e.target.value || null })
-                }
-              >
-                <option value="">No property</option>
-                {properties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button className="save" onClick={saveDraft}>
-                Save
-              </button>
-              <button className="caughtup" onClick={clearPin}>
-                Clear pin
-              </button>
-              <button className="caughtup" onClick={() => setDraft(null)}>
-                Cancel
-              </button>
+            <div className="pinactions">
+              <button className="btn primary sm" onClick={saveDraft}>Save</button>
+              <button className="btn quiet sm" onClick={clearPin}>Clear pin</button>
+              <button className="btn quiet sm" onClick={() => setDraft(null)}>Cancel</button>
             </div>
           </div>
-        )}
-        {!draft && (
-          <div className="camtray">
+        ) : (
+          <div className="railsec">
+            <h3 className="seghead">Cameras</h3>
             {cameras
               .filter((c) => !propFilter || c.property_id === propFilter)
               .map((c) => (
-                <button
-                  key={c.camera_id}
-                  className={'chip' + (c.pin_lat == null ? ' unpinned' : '')}
-                  onClick={() => startEdit(c)}
-                >
-                  {c.pin_lat == null ? '◌ ' : '● '}
-                  {c.name || c.camera_id}
+                <button key={c.camera_id} className="camrow" onClick={() => startEdit(c)}>
+                  <span className={'pinstate' + (c.pin_lat != null ? ' pinned' : '')}>●</span>
+                  <span className="camname">{c.name || c.camera_id}{c.shared ? ' ↗' : ''}</span>
+                  <span className="camprop">
+                    {properties.find((p) => p.id === c.property_id)?.name || ''}
+                  </span>
                 </button>
               ))}
           </div>
         )}
+        </aside>
       </div>
     </div>
   )

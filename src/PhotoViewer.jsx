@@ -3,7 +3,6 @@ import { supabase } from './supabase.js'
 import { TAGS } from './tags.js'
 
 let buckCache = null
-
 const SUG_COLORS = ['#4fc3f7', '#ffd54f', '#e56b1f', '#ab47bc', '#66bb6a', '#ef5350']
 
 export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, onSaved }) {
@@ -12,10 +11,10 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [bucks, setBucks] = useState(buckCache || [])
-  const [assigned, setAssigned] = useState([]) // sighting rows
+  const [assigned, setAssigned] = useState([])
+  const [suggestions, setSuggestions] = useState([])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [newBuck, setNewBuck] = useState('')
-  const [suggestions, setSuggestions] = useState([])
 
   useEffect(() => {
     setTags(photo.tags || [])
@@ -91,9 +90,9 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
     if (data) setAssigned((a) => [...a, data])
   }
 
-  async function unassign(sighting) {
-    await supabase.from('buck_sightings').delete().eq('id', sighting.id)
-    setAssigned((a) => a.filter((s) => s.id !== sighting.id))
+  async function unassign(s) {
+    await supabase.from('buck_sightings').delete().eq('id', s.id)
+    setAssigned((a) => a.filter((x) => x.id !== s.id))
   }
 
   async function createAndAssign(e) {
@@ -121,18 +120,12 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       .select('id,buck_id')
       .single()
     if (data) setAssigned((a) => [...a, data])
-    await supabase
-      .from('buck_match_suggestions')
-      .update({ status: 'accepted' })
-      .eq('id', sug.id)
+    await supabase.from('buck_match_suggestions').update({ status: 'accepted' }).eq('id', sug.id)
     setSuggestions((s) => s.filter((x) => x.id !== sug.id))
   }
 
   async function rejectSuggestion(sug) {
-    await supabase
-      .from('buck_match_suggestions')
-      .update({ status: 'rejected' })
-      .eq('id', sug.id)
+    await supabase.from('buck_match_suggestions').update({ status: 'rejected' }).eq('id', sug.id)
     setSuggestions((s) => s.filter((x) => x.id !== sug.id))
   }
 
@@ -151,20 +144,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
 
   return (
     <div className="viewer">
-      <div className="bar">
-        <div>
-          <div className="cam">
-            {camera?.name || photo.camera_id}
-            {camera?.shared ? ' ↗' : ''}
-          </div>
-          <div className="when">{when}</div>
-        </div>
-        <button className="close" onClick={onClose} aria-label="Close">
-          ✕
-        </button>
-      </div>
-
-      <div className="imgwrap">
+      <div className="stage">
         {url ? (
           <span className="imgbox">
             <img src={url} alt="" />
@@ -192,118 +172,146 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
         ) : (
           <div className="spinner">Loading…</div>
         )}
-        {onPrev && <button className="nav prev" onClick={onPrev} aria-label="Previous" />}
-        {onNext && <button className="nav next" onClick={onNext} aria-label="Next" />}
-      </div>
-
-      <div className="meta">
-        {photo.battery != null && <span>Battery {photo.battery}%</span>}
-        {photo.signal != null && <span>Signal {photo.signal}</span>}
-        {photo.reviewed && <span>Reviewed</span>}
-      </div>
-
-      <div className="tagpanel">
-        <h3>What's in this photo</h3>
-        <div className="tagrow">
-          {TAGS.map((t) => (
-            <button
-              key={t}
-              className={'tag' + (tags.includes(t) ? ' on' : '') + (t === 'Buck' ? ' buck' : '')}
-              onClick={() => toggle(t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="savebar">
-          <button className="save" onClick={save} disabled={saving || saved}>
-            {saved ? 'Saved' : saving ? 'Saving…' : 'Save tags'}
+        {onPrev && (
+          <button className="nav prev" onClick={onPrev} aria-label="Previous">
+            ‹
           </button>
-          {saved && <span className="reviewed-note">Marked reviewed</span>}
+        )}
+        {onNext && (
+          <button className="nav next" onClick={onNext} aria-label="Next">
+            ›
+          </button>
+        )}
+      </div>
+
+      <aside className="rail">
+        <div className="railhead">
+          <div>
+            <div className="cam">
+              {camera?.name || photo.camera_id}
+              {camera?.shared ? ' ↗' : ''}
+            </div>
+            <div className="when">{when}</div>
+          </div>
+          <button className="close" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+
+        <div className="meta">
+          {photo.battery != null && <span>Battery {photo.battery}%</span>}
+          {photo.signal != null && <span>Signal {photo.signal}</span>}
+          {photo.reviewed && <span>Reviewed</span>}
+        </div>
+
+        <div className="railsec">
+          <h3 className="seghead">Tags</h3>
+          <div className="tagrow">
+            {TAGS.map((t) => (
+              <button
+                key={t}
+                className={'chip' + (tags.includes(t) ? (t === 'Buck' ? ' accent on' : ' on') : '')}
+                onClick={() => toggle(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="savebar">
+            <button className="btn primary sm" onClick={save} disabled={saving || saved}>
+              {saved ? 'Saved' : saving ? 'Saving…' : 'Save tags'}
+            </button>
+            {saved && <span className="reviewed-note">Marked reviewed</span>}
+          </div>
         </div>
 
         {suggestions.length > 0 && (
-          <>
-            <h3 className="assignhead">Suggested matches</h3>
+          <div className="railsec">
+            <h3 className="seghead">Suggested matches</h3>
             <div className="sugcol">
-              {suggestions.map((s, i) => (
-                <div
-                  key={s.id}
-                  className="sugrow"
-                  style={{ borderLeft: '4px solid ' + SUG_COLORS[i % SUG_COLORS.length] }}
-                >
-                  <div className="sugtext">
-                    <span
-                      className="sugname"
-                      style={{ color: SUG_COLORS[i % SUG_COLORS.length] }}
-                    >
-                      {i + 1} · 
-                      {s.label === 'match'
-                        ? `${buckName(s.buck_id)}? ${Math.round((s.confidence || 0) * 100)}%`
-                        : s.label === 'new_buck'
-                        ? 'New buck?'
-                        : 'Unsure'}
-                    </span>
-                    <span className="sugwhy">{s.reasoning}</span>
+              {suggestions.map((s, i) => {
+                const color = SUG_COLORS[i % SUG_COLORS.length]
+                return (
+                  <div key={s.id} className="sugrow" style={{ borderLeft: '3px solid ' + color }}>
+                    <div className="sugtext">
+                      <span className="sugname" style={{ color }}>
+                        {i + 1} ·{' '}
+                        {s.label === 'match'
+                          ? `${buckName(s.buck_id)}? ${Math.round((s.confidence || 0) * 100)}%`
+                          : s.label === 'new_buck'
+                          ? 'New buck?'
+                          : 'Unsure'}
+                      </span>
+                      <span className="sugwhy">{s.reasoning}</span>
+                    </div>
+                    {s.label === 'match' ? (
+                      <div className="sugbtns">
+                        <button className="btn primary sm" onClick={() => acceptSuggestion(s)}>
+                          ✓
+                        </button>
+                        <button className="btn quiet sm" onClick={() => rejectSuggestion(s)}>
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="sugbtns">
+                        <button
+                          className="btn sm"
+                          onClick={() => {
+                            setPickerOpen(true)
+                            rejectSuggestion(s)
+                          }}
+                        >
+                          Assign…
+                        </button>
+                        <button className="btn quiet sm" onClick={() => rejectSuggestion(s)}>
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {s.label === 'match' ? (
-                    <div className="sugbtns">
-                      <button className="save" onClick={() => acceptSuggestion(s)}>✓</button>
-                      <button className="caughtup" onClick={() => rejectSuggestion(s)}>✕</button>
-                    </div>
-                  ) : (
-                    <div className="sugbtns">
-                      <button
-                        className="caughtup"
-                        onClick={() => {
-                          setPickerOpen(true)
-                          rejectSuggestion(s)
-                        }}
-                      >
-                        Assign…
-                      </button>
-                      <button className="caughtup" onClick={() => rejectSuggestion(s)}>
-                        Dismiss
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
-          </>
-        )}
-
-        <h3 className="assignhead">Bucks in this photo</h3>
-        <div className="tagrow">
-          {assigned.map((s) => (
-            <button key={s.id} className="tag on buck" onClick={() => unassign(s)}>
-              {buckName(s.buck_id)} ✕
-            </button>
-          ))}
-          <button className="tag" onClick={() => setPickerOpen(!pickerOpen)}>
-            {pickerOpen ? 'Close' : '+ Assign'}
-          </button>
-        </div>
-        {pickerOpen && (
-          <div className="picker">
-            {bucks
-              .filter((b) => !assignedIds.has(b.id))
-              .map((b) => (
-                <button key={b.id} className="tag" onClick={() => assign(b.id)}>
-                  {b.name}
-                </button>
-              ))}
-            <form className="newbuck" onSubmit={createAndAssign}>
-              <input
-                placeholder="New buck name…"
-                value={newBuck}
-                onChange={(e) => setNewBuck(e.target.value)}
-              />
-              <button disabled={!newBuck.trim()}>Add</button>
-            </form>
           </div>
         )}
-      </div>
+
+        <div className="railsec">
+          <h3 className="seghead">Bucks in this photo</h3>
+          <div className="tagrow">
+            {assigned.map((s) => (
+              <button key={s.id} className="chip accent on" onClick={() => unassign(s)}>
+                {buckName(s.buck_id)} ✕
+              </button>
+            ))}
+            <button className="chip" onClick={() => setPickerOpen(!pickerOpen)}>
+              {pickerOpen ? 'Close' : '+ Assign'}
+            </button>
+          </div>
+          {pickerOpen && (
+            <div className="picker">
+              {bucks
+                .filter((b) => !assignedIds.has(b.id))
+                .map((b) => (
+                  <button key={b.id} className="chip" onClick={() => assign(b.id)}>
+                    {b.name}
+                  </button>
+                ))}
+              <form className="newbuck" onSubmit={createAndAssign}>
+                <input
+                  className="field"
+                  placeholder="New buck name…"
+                  value={newBuck}
+                  onChange={(e) => setNewBuck(e.target.value)}
+                />
+                <button className="btn primary sm" disabled={!newBuck.trim()}>
+                  Add
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   )
 }

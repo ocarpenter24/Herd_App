@@ -23,18 +23,19 @@ export default function Login() {
   return (
     <div className="login">
       <img className="mark" src="/icon-192.png" alt="" />
-      <h1>Herd</h1>
+      <h1 className="wordmark">Herd</h1>
       <form onSubmit={submit}>
         <input
+          className="field"
           type="password"
-          inputMode="text"
-          autoComplete="current-password"
           placeholder="Passcode"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           autoFocus
         />
-        <button disabled={busy || !code}>{busy ? 'Checking…' : 'Open'}</button>
+        <button className="btn primary" disabled={busy || !code}>
+          {busy ? 'Checking…' : 'Open'}
+        </button>
         {err && <div className="err">{err}</div>}
       </form>
     </div>
