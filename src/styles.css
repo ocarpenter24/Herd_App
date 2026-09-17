@@ -296,7 +296,25 @@ input, select, textarea { font: inherit; color: var(--text); }
 .sugwhy { color: var(--muted); font-size: 11.5px; }
 .sugbtns { display: flex; gap: 5px; flex-shrink: 0; }
 
-.picker { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.picker {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--raised);
+  border-radius: var(--r);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pickerhead {
+  width: 100%;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sugwrap { display: flex; flex-direction: column; }
+.sugrow.done { opacity: 0.65; padding: 6px 10px; }
+.detbox.resolved { border-style: dashed; }
+.detbox.resolved i { font-size: 10px; }
 .newbuck { display: flex; gap: 6px; width: 100%; }
 .newbuck input { flex: 1; }
 
