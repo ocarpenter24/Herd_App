@@ -30,6 +30,9 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
   const [loading, setLoading] = useState(true)
   const [newCount, setNewCount] = useState(0)
   const [viewing, setViewing] = useState(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
   const lastSeenRef = useRef(localStorage.getItem(LAST_SEEN_KEY))
   const lastSignedRef = useRef(Date.now())
 
@@ -136,6 +139,63 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
     setNewCount(0)
   }
 
+  const selKey = (p) => p.camera_id + '|' + p.photo_name
+
+  function toggleSel(p) {
+    const k = selKey(p)
+    setSelected((s) => {
+      const n = new Set(s)
+      n.has(k) ? n.delete(k) : n.add(k)
+      return n
+    })
+  }
+
+  function exitSelect() {
+    setSelectMode(false)
+    setSelected(new Set())
+  }
+
+  // kind 'doe': photo is doe(s) — clear pending matches, swap Buck tag for Doe.
+  // kind 'buck': small buck not being tracked — skip matches, keep Buck tag.
+  async function bulkResolve(kind) {
+    if (!selected.size || bulkBusy) return
+    setBulkBusy(true)
+    const newTagsByKey = new Map()
+    for (const p of photos) {
+      if (!selected.has(selKey(p))) continue
+      const tags = p.tags || []
+      const newTags =
+        kind === 'doe'
+          ? [...tags.filter((t) => t !== 'Buck'), ...(tags.includes('Doe') ? [] : ['Doe'])]
+          : tags.includes('Buck')
+          ? tags
+          : [...tags, 'Buck']
+      newTagsByKey.set(selKey(p), newTags)
+      await supabase
+        .from('buck_match_suggestions')
+        .update({ status: kind === 'doe' ? 'not_buck' : 'unsure' })
+        .eq('camera_id', p.camera_id)
+        .eq('photo_name', p.photo_name)
+        .eq('status', 'pending')
+      await supabase
+        .from('reveal_photos')
+        .update({ tags: newTags, reviewed: true })
+        .eq('camera_id', p.camera_id)
+        .eq('photo_name', p.photo_name)
+    }
+    setPhotos((list) =>
+      sugOnly
+        ? list.filter((p) => !newTagsByKey.has(selKey(p)))
+        : list.map((p) =>
+            newTagsByKey.has(selKey(p))
+              ? { ...p, tags: newTagsByKey.get(selKey(p)), reviewed: true }
+              : p
+          )
+    )
+    setBulkBusy(false)
+    exitSelect()
+  }
+
   function onSaved(updated) {
     setPhotos((list) =>
       list.map((p) => (p.photo_name === updated.photo_name ? { ...p, ...updated } : p))
@@ -175,7 +235,30 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
     <>
       <header className="pagehead">
         <h2>Feed</h2>
-        <div className="chiprow">
+        {selectMode && (
+          <>
+            <span className="selcount">{selected.size} selected</span>
+            <div className="spacer" />
+            <button className="btn sm" disabled={!selected.size || bulkBusy}
+              title="These are does: clears their pending buck matches and swaps the Buck tag for Doe"
+              onClick={() => bulkResolve('doe')}>
+              {bulkBusy ? 'Working…' : 'Mark doe'}
+            </button>
+            <button className="btn sm" disabled={!selected.size || bulkBusy}
+              title="Small buck you're not tracking: skips the matches, keeps the Buck tag"
+              onClick={() => bulkResolve('buck')}>
+              Buck — skip matches
+            </button>
+            <button className="btn quiet sm" onClick={exitSelect}>Cancel</button>
+          </>
+        )}
+        <div className="chiprow" style={selectMode ? { display: 'none' } : undefined}>
+          <button
+            className={'chip' + (selectMode ? ' on' : '')}
+            onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+          >
+            Select
+          </button>
           <button
             className={'chip accent' + (reviewOnly ? ' on' : '')}
             onClick={() => setReviewOnly(!reviewOnly)}
@@ -218,8 +301,9 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
             </button>
           ))}
         </div>
-        <div className="spacer" />
-        <span className={'newnote' + (newCount ? '' : ' zero')}>
+        <div className="spacer" style={selectMode ? { display: 'none' } : undefined} />
+        <span style={selectMode ? { display: 'none' } : undefined}
+          className={'newnote' + (newCount ? '' : ' zero')}>
           {lastSeen ? (newCount ? `${newCount} new` : 'Caught up') : ''}
         </span>
         {(newCount > 0 || !lastSeen) && (
@@ -244,10 +328,16 @@ export default function Feed({ cameras, camFilter, setCamFilter, toggleFilter })
                 const isNew = lastSeen && p.taken_at > lastSeen
                 const tagline = (p.tags || []).join(' · ')
                 const isBuck = (p.tags || []).includes('Buck')
+                const isSel = selected.has(selKey(p))
                 return (
-                  <button key={p.camera_id + p.photo_name} className="cell" onClick={() => setViewing(i)}>
+                  <button
+                    key={p.camera_id + p.photo_name}
+                    className={'cell' + (isSel ? ' sel' : '')}
+                    onClick={() => (selectMode ? toggleSel(p) : setViewing(i))}
+                  >
                     {src ? <img src={src} alt="" loading="lazy" /> : null}
-                    {isNew && <span className="dot" />}
+                    {isSel && <span className="selchk">✓</span>}
+                    {!selectMode && isNew && <span className="dot" />}
                     {tagline && (
                       <span className={'tagline' + (isBuck ? ' buck' : '')}>{tagline}</span>
                     )}
