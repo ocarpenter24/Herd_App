@@ -4,10 +4,12 @@ import Login from './Login.jsx'
 import Feed from './Feed.jsx'
 import Bucks from './Bucks.jsx'
 import MapPage from './MapPage.jsx'
+import Data from './Data.jsx'
 
 const TABS = [
   { id: 'feed', label: 'Feed' },
   { id: 'bucks', label: 'Bucks' },
+  { id: 'data', label: 'Data' },
   { id: 'map', label: 'Map' },
 ]
 
@@ -126,6 +128,7 @@ export default function App() {
           />
         </div>
         {tab === 'bucks' && <Bucks />}
+        {tab === 'data' && <Data cameras={cameras} />}
         {tab === 'map' && <MapPage />}
       </div>
 
