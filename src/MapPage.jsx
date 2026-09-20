@@ -21,6 +21,30 @@ function loadLeaflet() {
   })
 }
 
+const toYd = (mtr) => Math.round(mtr * 1.09361)
+
+function haversine(a, b) {
+  const R = 6371000
+  const dLa = ((b[0] - a[0]) * Math.PI) / 180
+  const dLo = ((b[1] - a[1]) * Math.PI) / 180
+  const la1 = (a[0] * Math.PI) / 180
+  const la2 = (b[0] * Math.PI) / 180
+  const h =
+    Math.sin(dLa / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLo / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+function bearingDeg(a, b) {
+  const la1 = (a[0] * Math.PI) / 180
+  const la2 = (b[0] * Math.PI) / 180
+  const dLo = ((b[1] - a[1]) * Math.PI) / 180
+  const y = Math.sin(dLo) * Math.cos(la2)
+  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLo)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+const HOP_MAX_HOURS = 24
+
 // Point `dist` meters from (lat,lng) at compass bearing `deg`
 function destPoint(lat, lng, deg, dist) {
   const R = 6371000
@@ -68,6 +92,9 @@ export default function MapPage() {
   const [draft, setDraft] = useState(null) // {camera_id, pin_lat, pin_lng, facing_deg, property_id}
   const [newProp, setNewProp] = useState('')
   const [addingProp, setAddingProp] = useState(false)
+  const [bucks, setBucks] = useState([])
+  const [sightings, setSightings] = useState([])
+  const [selBuck, setSelBuck] = useState(null)
 
   draftRef.current = draft
 
@@ -117,6 +144,56 @@ export default function MapPage() {
 
   // Redraw markers on data / filter / draft change
   useEffect(() => {
+    supabase.from('bucks').select('id,name,status').order('name')
+      .then(({ data }) => setBucks(data || []))
+    supabase.from('buck_sightings').select('buck_id,camera_id,reveal_photos(taken_at)')
+      .then(({ data }) => setSightings(data || []))
+  }, [])
+
+  // Selected buck's travel picture: visits per pinned camera + camera-to-camera hops
+  function buckTravel(buckId) {
+    const camPos = {}
+    for (const c of cameras)
+      if (c.pin_lat != null) camPos[c.camera_id] = [c.pin_lat, c.pin_lng]
+    const seq = sightings
+      .filter((s) => s.buck_id === buckId && s.reveal_photos?.taken_at)
+      .map((s) => ({ cam: s.camera_id, t: new Date(s.reveal_photos.taken_at) }))
+      .sort((a, z) => a.t - z.t)
+    const visits = {}
+    let unpinned = 0
+    for (const s of seq) {
+      visits[s.cam] = (visits[s.cam] || 0) + 1
+      if (!camPos[s.cam]) unpinned++
+    }
+    // collapse repeats at the same camera, then pair up moves
+    const stops = []
+    for (const s of seq) {
+      const last = stops[stops.length - 1]
+      if (last && last.cam === s.cam) last.t = s.t
+      else stops.push({ ...s })
+    }
+    const hops = {}
+    for (let i = 1; i < stops.length; i++) {
+      const a = stops[i - 1]
+      const b = stops[i]
+      if (!camPos[a.cam] || !camPos[b.cam]) continue
+      if (b.t - a.t > HOP_MAX_HOURS * 3600 * 1000) continue
+      const key = a.cam + '>' + b.cam
+      hops[key] = hops[key] || { from: a.cam, to: b.cam, n: 0,
+        dist: haversine(camPos[a.cam], camPos[b.cam]) }
+      hops[key].n++
+    }
+    const pinnedCams = Object.keys(visits).filter((c) => camPos[c])
+    let maxRange = 0
+    for (let i = 0; i < pinnedCams.length; i++)
+      for (let j = i + 1; j < pinnedCams.length; j++)
+        maxRange = Math.max(maxRange,
+          haversine(camPos[pinnedCams[i]], camPos[pinnedCams[j]]))
+    return { visits, hops: Object.values(hops), camPos, maxRange, unpinned,
+      total: seq.length }
+  }
+
+  useEffect(() => {
     if (!ready || !layerRef.current) return
     const L = window.L
     const layer = layerRef.current
@@ -124,6 +201,7 @@ export default function MapPage() {
 
     const shown = cameras.filter((c) => !propFilter || c.property_id === propFilter)
     const bounds = []
+    const travel = selBuck && !draft ? buckTravel(selBuck) : null
     for (const c of shown) {
       const isDraft = draft && draft.camera_id === c.camera_id
       const lat = isDraft ? draft.pin_lat : c.pin_lat
@@ -132,8 +210,21 @@ export default function MapPage() {
       const dist = (isDraft ? draft.cone_dist : c.cone_dist) ?? DEFAULT_DIST
       const fov = (isDraft ? draft.cone_spread : c.cone_spread) ?? DEFAULT_FOV
       if (lat == null || lng == null) continue
-      bounds.push([lat, lng])
-      if (facing != null) {
+      const visitN = travel ? travel.visits[c.camera_id] || 0 : null
+      if (travel && !visitN) {
+        // cameras this buck hasn't hit: dim, no cone
+        L.circleMarker([lat, lng], {
+          radius: 5, color: '#101512', weight: 1,
+          fillColor: '#5d645c', fillOpacity: 0.55,
+        })
+          .bindTooltip(c.name || c.camera_id, { direction: 'top', offset: [0, -8] })
+          .on('click', () => startEdit(c))
+          .addTo(layer)
+        continue
+      }
+      if (!travel) bounds.push([lat, lng])
+      else bounds.push([lat, lng])
+      if (!travel && facing != null) {
         L.polygon(coneLatLngs(lat, lng, Number(facing), Number(fov), Number(dist)), {
           color: '#e56b1f',
           weight: 1,
@@ -142,24 +233,62 @@ export default function MapPage() {
         }).addTo(layer)
       }
       L.circleMarker([lat, lng], {
-        radius: 7,
+        radius: travel ? Math.min(14, 7 + visitN) : 7,
         color: isDraft ? '#ffffff' : '#101512',
         weight: 2,
         fillColor: '#e56b1f',
         fillOpacity: 1,
       })
-        .bindTooltip(c.name || c.camera_id, { direction: 'top', offset: [0, -8] })
+        .bindTooltip(
+          travel
+            ? `${c.name || c.camera_id} — ${visitN} sighting${visitN === 1 ? '' : 's'}`
+            : c.name || c.camera_id,
+          { direction: 'top', offset: [0, -8] }
+        )
         .on('click', () => startEdit(c))
         .addTo(layer)
     }
-    const fitKey = propFilter || 'all'
+
+    if (travel) {
+      for (const h of travel.hops) {
+        const a = travel.camPos[h.from]
+        const b = travel.camPos[h.to]
+        if (!a || !b) continue
+        L.polyline([a, b], {
+          color: '#e56b1f', weight: Math.min(7, 1.5 + h.n * 1.2),
+          opacity: 0.75, dashArray: h.n === 1 ? '6 6' : null,
+        })
+          .bindTooltip(
+            `${h.n}× this direction · ${toYd(h.dist)} yd`,
+            { sticky: true }
+          )
+          .addTo(layer)
+        const mid = [a[0] + (b[0] - a[0]) * 0.58, a[1] + (b[1] - a[1]) * 0.58]
+        const rot = bearingDeg(a, b) - 90
+        L.marker(mid, {
+          interactive: false,
+          icon: L.divIcon({
+            className: 'hoparrow',
+            html: `<span style="transform:rotate(${rot}deg)">➤</span>`,
+            iconSize: [18, 18], iconAnchor: [9, 9],
+          }),
+        }).addTo(layer)
+      }
+    }
+    const fitKey = (propFilter || 'all') + '|' + (selBuck || '')
     if (bounds.length && !draft && fitKeyRef.current !== fitKey) {
       mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 })
       fitKeyRef.current = fitKey
     }
-  }, [ready, cameras, propFilter, draft]) // eslint-disable-line
+  }, [ready, cameras, propFilter, draft, selBuck, sightings]) // eslint-disable-line
+
+  const camLabel = (id) => {
+    const c = cameras.find((x) => x.camera_id === id)
+    return c?.name || id
+  }
 
   function startEdit(c) {
+    setSelBuck(null)
     setDraft({
       camera_id: c.camera_id,
       name: c.name,
@@ -303,6 +432,54 @@ export default function MapPage() {
             </div>
           </div>
         ) : (
+          <>
+          <div className="railsec">
+            <h3 className="seghead">Buck travel</h3>
+            <div className="tagrow">
+              {bucks.map((b) => (
+                <button key={b.id}
+                  className={'chip' + (selBuck === b.id ? ' accent on' : '')}
+                  onClick={() => setSelBuck(selBuck === b.id ? null : b.id)}>
+                  {b.name}
+                </button>
+              ))}
+            </div>
+            {selBuck && (() => {
+              const t = buckTravel(selBuck)
+              const name = bucks.find((b) => b.id === selBuck)?.name
+              return (
+                <div className="travelsum">
+                  <p className="insight" style={{ margin: '10px 0 6px' }}>
+                    {name}: {t.total} sightings across{' '}
+                    {Object.keys(t.visits).length} camera
+                    {Object.keys(t.visits).length === 1 ? '' : 's'}
+                    {t.maxRange > 0 && <> · range {toYd(t.maxRange)} yd</>}
+                    {t.unpinned > 0 && (
+                      <> · {t.unpinned} sighting{t.unpinned === 1 ? '' : 's'} at
+                      unpinned cameras</>
+                    )}
+                  </p>
+                  {t.hops.length > 0 ? (
+                    t.hops
+                      .sort((a, z) => z.n - a.n)
+                      .map((h) => (
+                        <div key={h.from + h.to} className="hoprow">
+                          <span className="hoplbl">
+                            {camLabel(h.from)} → {camLabel(h.to)}
+                          </span>
+                          <span className="n">×{h.n} · {toYd(h.dist)} yd</span>
+                        </div>
+                      ))
+                  ) : (
+                    <p className="insight" style={{ margin: 0 }}>
+                      No camera-to-camera moves inside {HOP_MAX_HOURS}h yet — routes
+                      draw themselves as his confirmed sightings stack up.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
           <div className="railsec">
             <h3 className="seghead">Cameras</h3>
             {cameras
@@ -317,6 +494,7 @@ export default function MapPage() {
                 </button>
               ))}
           </div>
+          </>
         )}
         </aside>
       </div>

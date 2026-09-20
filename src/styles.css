@@ -550,3 +550,19 @@ input, select, textarea { font: inherit; color: var(--text); }
   font-size: 11px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
 }
+
+
+/* ---------- Buck travel on map ---------- */
+.hoparrow span {
+  display: inline-block;
+  color: #e56b1f;
+  font-size: 15px;
+  line-height: 18px;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+.hoprow {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 3px 0; font-size: 12.5px;
+}
+.hoprow .hoplbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hoprow .n { color: var(--muted); font-size: 12px; white-space: nowrap; }
