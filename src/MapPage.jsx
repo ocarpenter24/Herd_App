@@ -44,6 +44,84 @@ function bearingDeg(a, b) {
 }
 
 const HOP_MAX_HOURS = 24
+const DAY_START = 6   // "daylight" = 6:00a-6:59p local; rough shooting light
+const DAY_END = 19
+const isDayHour = (h) => h >= DAY_START && h < DAY_END
+
+// local meter projection for curves/areas (fine at property scale)
+function projector(origin) {
+  const kx = 111320 * Math.cos((origin[0] * Math.PI) / 180)
+  const ky = 110540
+  return {
+    to: (p) => [(p[1] - origin[1]) * kx, (p[0] - origin[0]) * ky],
+    from: (xy) => [origin[0] + xy[1] / ky, origin[1] + xy[0] / kx],
+  }
+}
+
+// curved path a->b bowing right of travel, so opposite directions separate
+function curvePoints(a, b) {
+  const proj = projector(a)
+  const [x2, y2] = proj.to(b)
+  const d = Math.hypot(x2, y2)
+  if (d < 15) return null
+  const off = Math.min(70, Math.max(18, d * 0.16))
+  const cx = x2 / 2 + (y2 / d) * off
+  const cy = y2 / 2 - (x2 / d) * off
+  const pts = []
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20
+    const mt = 1 - t
+    pts.push(proj.from([
+      mt * mt * 0 + 2 * mt * t * cx + t * t * x2,
+      mt * mt * 0 + 2 * mt * t * cy + t * t * y2,
+    ]))
+  }
+  return pts
+}
+
+function convexHull(points) {
+  if (points.length < 3) return null
+  const pts = [...points].sort((a, z) => a[1] - z[1] || a[0] - z[0])
+  const cross = (o, a, b) =>
+    (a[1] - o[1]) * (b[0] - o[0]) - (a[0] - o[0]) * (b[1] - o[1])
+  const lower = []
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
+      lower.pop()
+    lower.push(p)
+  }
+  const upper = []
+  for (const p of [...pts].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
+      upper.pop()
+    upper.push(p)
+  }
+  const hull = [...lower.slice(0, -1), ...upper.slice(0, -1)]
+  return hull.length >= 3 ? hull : null
+}
+
+function hullAcres(hull) {
+  const proj = projector(hull[0])
+  const xy = hull.map(proj.to)
+  let s = 0
+  for (let i = 0; i < xy.length; i++) {
+    const [x1, y1] = xy[i]
+    const [x2, y2] = xy[(i + 1) % xy.length]
+    s += x1 * y2 - x2 * y1
+  }
+  return Math.abs(s / 2) / 4046.86
+}
+
+const DAY_ROUTE = '#e5a440'
+const NIGHT_ROUTE = '#6d93ad'
+const MIX_ROUTE = '#9aa39a'
+const hopWhen = (h) => {
+  const e = Object.entries(h.periods).sort((a, z) => z[1] - a[1])
+  if (!e.length) return ''
+  return e.length === 1 || e[0][1] > h.n / 2 ? e[0][0] : e[0][0] + '+'
+}
+const routeColor = (h) =>
+  h.dayN === h.nightN ? MIX_ROUTE : h.dayN > h.nightN ? DAY_ROUTE : NIGHT_ROUTE
 
 // Point `dist` meters from (lat,lng) at compass bearing `deg`
 function destPoint(lat, lng, deg, dist) {
@@ -95,6 +173,8 @@ export default function MapPage() {
   const [bucks, setBucks] = useState([])
   const [sightings, setSightings] = useState([])
   const [selBuck, setSelBuck] = useState(null)
+  const [timeFilter, setTimeFilter] = useState('all') // all | day | night
+  const [showTrail, setShowTrail] = useState(true)
 
   draftRef.current = draft
 
@@ -150,22 +230,30 @@ export default function MapPage() {
       .then(({ data }) => setSightings(data || []))
   }, [])
 
-  // Selected buck's travel picture: visits per pinned camera + camera-to-camera hops
-  function buckTravel(buckId) {
+  // Selected buck's travel picture: visits + hops from the time-filtered
+  // sightings; cadence/daylight-trend/core always from ALL sightings.
+  function buckTravel(buckId, filter) {
     const camPos = {}
     for (const c of cameras)
       if (c.pin_lat != null) camPos[c.camera_id] = [c.pin_lat, c.pin_lng]
-    const seq = sightings
+    const all = sightings
       .filter((s) => s.buck_id === buckId && s.reveal_photos?.taken_at)
       .map((s) => ({ cam: s.camera_id, t: new Date(s.reveal_photos.taken_at) }))
       .sort((a, z) => a.t - z.t)
+
+    const seq = all.filter((s) => {
+      if (filter === 'day') return isDayHour(s.t.getHours())
+      if (filter === 'night') return !isDayHour(s.t.getHours())
+      return true
+    })
+
     const visits = {}
     let unpinned = 0
     for (const s of seq) {
       visits[s.cam] = (visits[s.cam] || 0) + 1
       if (!camPos[s.cam]) unpinned++
     }
-    // collapse repeats at the same camera, then pair up moves
+
     const stops = []
     for (const s of seq) {
       const last = stops[stops.length - 1]
@@ -179,18 +267,55 @@ export default function MapPage() {
       if (!camPos[a.cam] || !camPos[b.cam]) continue
       if (b.t - a.t > HOP_MAX_HOURS * 3600 * 1000) continue
       const key = a.cam + '>' + b.cam
-      hops[key] = hops[key] || { from: a.cam, to: b.cam, n: 0,
-        dist: haversine(camPos[a.cam], camPos[b.cam]) }
-      hops[key].n++
+      const h = (hops[key] = hops[key] || {
+        from: a.cam, to: b.cam, n: 0, dayN: 0, nightN: 0, periods: {},
+        dist: haversine(camPos[a.cam], camPos[b.cam]),
+      })
+      h.n++
+      const hr = b.t.getHours()
+      isDayHour(hr) ? h.dayN++ : h.nightN++
+      const per = hr >= 5 && hr <= 10 ? 'Morning' : hr >= 11 && hr <= 15
+        ? 'Midday' : hr >= 16 && hr <= 19 ? 'Evening' : 'Night'
+      h.periods[per] = (h.periods[per] || 0) + 1
     }
-    const pinnedCams = Object.keys(visits).filter((c) => camPos[c])
+
+    // recent trail: last pinned stops (of the filtered network)
+    const pinnedStops = stops.filter((s) => camPos[s.cam])
+    const trail = pinnedStops.slice(-6)
+
+    // ---- stats from ALL sightings ----
+    const dayKeys = [...new Set(all.map((s) => s.t.toDateString()))]
+    let cadence = null
+    if (dayKeys.length >= 3) {
+      const times = dayKeys.map((d) => new Date(d).getTime()).sort((a, z) => a - z)
+      const span = (times[times.length - 1] - times[0]) / 86400000
+      cadence = span / (dayKeys.length - 1)
+    }
+    const daysSince = all.length
+      ? (Date.now() - all[all.length - 1].t.getTime()) / 86400000
+      : null
+
+    const cut = Date.now() - 14 * 86400000
+    const recent = all.filter((s) => s.t.getTime() >= cut)
+    const older = all.filter((s) => s.t.getTime() < cut)
+    const dayPct = (arr) =>
+      arr.length ? Math.round((arr.filter((s) => isDayHour(s.t.getHours())).length / arr.length) * 100) : null
+    const trend =
+      recent.length >= 4 && older.length >= 4
+        ? { now: dayPct(recent), was: dayPct(older) }
+        : { overall: dayPct(all) }
+
+    const visitedPins = Object.keys(visits).filter((c) => camPos[c]).map((c) => camPos[c])
     let maxRange = 0
-    for (let i = 0; i < pinnedCams.length; i++)
-      for (let j = i + 1; j < pinnedCams.length; j++)
-        maxRange = Math.max(maxRange,
-          haversine(camPos[pinnedCams[i]], camPos[pinnedCams[j]]))
+    for (let i = 0; i < visitedPins.length; i++)
+      for (let j = i + 1; j < visitedPins.length; j++)
+        maxRange = Math.max(maxRange, haversine(visitedPins[i], visitedPins[j]))
+    const hull = convexHull(visitedPins)
+    const acres = hull ? hullAcres(hull) : null
+
     return { visits, hops: Object.values(hops), camPos, maxRange, unpinned,
-      total: seq.length }
+      total: seq.length, allTotal: all.length, trail, cadence, daysSince,
+      trend, hull, acres }
   }
 
   useEffect(() => {
@@ -201,7 +326,7 @@ export default function MapPage() {
 
     const shown = cameras.filter((c) => !propFilter || c.property_id === propFilter)
     const bounds = []
-    const travel = selBuck && !draft ? buckTravel(selBuck) : null
+    const travel = selBuck && !draft ? buckTravel(selBuck, timeFilter) : null
     for (const c of shown) {
       const isDraft = draft && draft.camera_id === c.camera_id
       const lat = isDraft ? draft.pin_lat : c.pin_lat
@@ -222,8 +347,7 @@ export default function MapPage() {
           .addTo(layer)
         continue
       }
-      if (!travel) bounds.push([lat, lng])
-      else bounds.push([lat, lng])
+      bounds.push([lat, lng])
       if (!travel && facing != null) {
         L.polygon(coneLatLngs(lat, lng, Number(facing), Number(fov), Number(dist)), {
           color: '#e56b1f',
@@ -241,38 +365,73 @@ export default function MapPage() {
       })
         .bindTooltip(
           travel
-            ? `${c.name || c.camera_id} — ${visitN} sighting${visitN === 1 ? '' : 's'}`
+            ? `${c.name || c.camera_id} · ${visitN}`
             : c.name || c.camera_id,
-          { direction: 'top', offset: [0, -8] }
+          travel
+            ? { permanent: true, direction: 'right', offset: [10, 0], className: 'pinlbl' }
+            : { direction: 'top', offset: [0, -8] }
         )
         .on('click', () => startEdit(c))
         .addTo(layer)
     }
 
     if (travel) {
+      // core area under everything
+      if (travel.hull) {
+        L.polygon(travel.hull, {
+          color: '#e56b1f', weight: 1, opacity: 0.35,
+          fillColor: '#e56b1f', fillOpacity: 0.07, dashArray: '4 6',
+          interactive: false,
+        }).addTo(layer)
+      }
       for (const h of travel.hops) {
         const a = travel.camPos[h.from]
         const b = travel.camPos[h.to]
         if (!a || !b) continue
-        L.polyline([a, b], {
-          color: '#e56b1f', weight: Math.min(7, 1.5 + h.n * 1.2),
-          opacity: 0.75, dashArray: h.n === 1 ? '6 6' : null,
+        const pts = curvePoints(a, b)
+        if (!pts) continue
+        const col = routeColor(h)
+        const when = hopWhen(h)
+        L.polyline(pts, {
+          color: col, weight: Math.min(7, 1.5 + h.n * 1.2),
+          opacity: 0.8, dashArray: h.n === 1 ? '6 6' : null,
         })
-          .bindTooltip(
-            `${h.n}× this direction · ${toYd(h.dist)} yd`,
-            { sticky: true }
-          )
+          .bindTooltip(`${h.n}× this direction · ${toYd(h.dist)} yd · ${when}`,
+            { sticky: true })
           .addTo(layer)
-        const mid = [a[0] + (b[0] - a[0]) * 0.58, a[1] + (b[1] - a[1]) * 0.58]
-        const rot = bearingDeg(a, b) - 90
-        L.marker(mid, {
+        const rot = bearingDeg(pts[17], pts[19]) - 90
+        L.marker(pts[18], {
           interactive: false,
           icon: L.divIcon({
             className: 'hoparrow',
-            html: `<span style="transform:rotate(${rot}deg)">➤</span>`,
+            html: `<span style="transform:rotate(${rot}deg);color:${col}">➤</span>`,
             iconSize: [18, 18], iconAnchor: [9, 9],
           }),
         }).addTo(layer)
+      }
+      // recent trail: numbered latest stops over the aggregate
+      if (showTrail && travel.trail.length >= 2) {
+        const t = travel.trail
+        L.polyline(t.map((s) => travel.camPos[s.cam]), {
+          color: '#e7e5df', weight: 2, opacity: 0.9, dashArray: '2 5',
+          interactive: false,
+        }).addTo(layer)
+        t.forEach((s, i) => {
+          L.marker(travel.camPos[s.cam], {
+            icon: L.divIcon({
+              className: 'trailnum',
+              html: `<b>${i + 1}</b>`,
+              iconSize: [16, 16], iconAnchor: [8, 22],
+            }),
+          })
+            .bindTooltip(
+              `#${i + 1} · ${s.t.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+              })}`,
+              { direction: 'top', offset: [0, -14] }
+            )
+            .addTo(layer)
+        })
       }
     }
     const fitKey = (propFilter || 'all') + '|' + (selBuck || '')
@@ -280,7 +439,7 @@ export default function MapPage() {
       mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 })
       fitKeyRef.current = fitKey
     }
-  }, [ready, cameras, propFilter, draft, selBuck, sightings]) // eslint-disable-line
+  }, [ready, cameras, propFilter, draft, selBuck, sightings, timeFilter, showTrail]) // eslint-disable-line
 
   const camLabel = (id) => {
     const c = cameras.find((x) => x.camera_id === id)
@@ -439,41 +598,89 @@ export default function MapPage() {
               {bucks.map((b) => (
                 <button key={b.id}
                   className={'chip' + (selBuck === b.id ? ' accent on' : '')}
-                  onClick={() => setSelBuck(selBuck === b.id ? null : b.id)}>
+                  onClick={() => {
+                    setSelBuck(selBuck === b.id ? null : b.id)
+                    setTimeFilter('all')
+                  }}>
                   {b.name}
                 </button>
               ))}
             </div>
             {selBuck && (() => {
-              const t = buckTravel(selBuck)
+              const t = buckTravel(selBuck, timeFilter)
               const name = bucks.find((b) => b.id === selBuck)?.name
+              const cad = t.cadence
+              const overdue = cad && t.daysSince != null && t.daysSince > cad * 1.5
               return (
                 <div className="travelsum">
-                  <p className="insight" style={{ margin: '10px 0 6px' }}>
-                    {name}: {t.total} sightings across{' '}
-                    {Object.keys(t.visits).length} camera
+                  <div className="tagrow" style={{ margin: '10px 0 8px' }}>
+                    {[['all', 'All'], ['day', 'Daylight'], ['night', 'Night']].map(([v, l]) => (
+                      <button key={v}
+                        className={'chip' + (timeFilter === v ? ' on' : '')}
+                        onClick={() => setTimeFilter(v)}>
+                        {l}
+                      </button>
+                    ))}
+                    <button className={'chip' + (showTrail ? ' on' : '')}
+                      onClick={() => setShowTrail(!showTrail)}>
+                      Recent trail
+                    </button>
+                  </div>
+
+                  <p className="insight" style={{ margin: '0 0 2px' }}>
+                    {name}: {t.total}
+                    {timeFilter !== 'all' ? ` ${timeFilter}` : ''} sighting
+                    {t.total === 1 ? '' : 's'} · {Object.keys(t.visits).length} camera
                     {Object.keys(t.visits).length === 1 ? '' : 's'}
                     {t.maxRange > 0 && <> · range {toYd(t.maxRange)} yd</>}
+                    {t.acres != null && t.acres >= 1 && <> · core ~{Math.round(t.acres)} ac</>}
+                  </p>
+                  <p className="insight" style={{ margin: '0 0 2px' }}>
+                    {cad
+                      ? <>Shows every ~{cad.toFixed(1)}d · last seen {Math.floor(t.daysSince)}d ago
+                          {overdue ? <b className="due"> · overdue</b> : ' · on pace'}</>
+                      : t.daysSince != null
+                      ? <>Last seen {Math.floor(t.daysSince)}d ago</>
+                      : null}
+                  </p>
+                  <p className="insight" style={{ margin: '0 0 8px' }}
+                     title={`daylight = ${DAY_START}:00a-${DAY_END - 12}:00p`}>
+                    {t.trend.now != null ? (
+                      <>Daylight: {t.trend.now}% last 2wks (was {t.trend.was}%)
+                        {t.trend.now > t.trend.was ? ' ↑' : t.trend.now < t.trend.was ? ' ↓' : ''}</>
+                    ) : t.trend.overall != null ? (
+                      <>Daylight sightings: {t.trend.overall}%</>
+                    ) : null}
                     {t.unpinned > 0 && (
-                      <> · {t.unpinned} sighting{t.unpinned === 1 ? '' : 's'} at
-                      unpinned cameras</>
+                      <> · {t.unpinned} at unpinned cameras</>
                     )}
                   </p>
+
                   {t.hops.length > 0 ? (
-                    t.hops
-                      .sort((a, z) => z.n - a.n)
-                      .map((h) => (
-                        <div key={h.from + h.to} className="hoprow">
-                          <span className="hoplbl">
-                            {camLabel(h.from)} → {camLabel(h.to)}
-                          </span>
-                          <span className="n">×{h.n} · {toYd(h.dist)} yd</span>
-                        </div>
-                      ))
+                    <>
+                      <span className="legend" style={{ marginBottom: 6 }}>
+                        <i className="sw" style={{ background: DAY_ROUTE }} /> day
+                        <i className="sw" style={{ background: NIGHT_ROUTE }} /> night
+                      </span>
+                      {t.hops
+                        .sort((a, z) => z.n - a.n)
+                        .map((h) => (
+                          <div key={h.from + h.to} className="hoprow"
+                            style={{ borderLeft: '3px solid ' + routeColor(h), paddingLeft: 8 }}>
+                            <span className="hoplbl">
+                              {camLabel(h.from)} → {camLabel(h.to)}
+                            </span>
+                            <span className="n">
+                              ×{h.n} · {toYd(h.dist)} yd · {hopWhen(h)}
+                            </span>
+                          </div>
+                        ))}
+                    </>
                   ) : (
                     <p className="insight" style={{ margin: 0 }}>
-                      No camera-to-camera moves inside {HOP_MAX_HOURS}h yet — routes
-                      draw themselves as his confirmed sightings stack up.
+                      No camera-to-camera moves inside {HOP_MAX_HOURS}h
+                      {timeFilter !== 'all' ? ` in ${timeFilter} hours` : ''} yet —
+                      routes draw themselves as confirmed sightings stack up.
                     </p>
                   )}
                 </div>

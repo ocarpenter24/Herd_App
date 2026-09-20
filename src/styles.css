@@ -566,3 +566,67 @@ input, select, textarea { font: inherit; color: var(--text); }
 }
 .hoprow .hoplbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hoprow .n { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+
+/* ---------- Buck travel v2 ---------- */
+.pinlbl {
+  background: rgba(15, 18, 16, 0.82) !important;
+  border: 1px solid var(--line-strong) !important;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.pinlbl::before { display: none !important; }
+.trailnum b {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #e7e5df; color: #16130f;
+  font-size: 10px; font-weight: 700;
+  border: 1px solid #16130f;
+}
+.due { color: var(--accent); font-weight: 600; font-style: normal; }
+.travelsum .legend { display: flex; }
+
+
+/* ---------- Buck bios ---------- */
+.avatar { border-radius: 50%; object-fit: cover; display: block; background: var(--raised); }
+.avatar.sm { width: 28px; height: 28px; }
+.avatar.lg { width: 84px; height: 84px; }
+.avatar.ph { display: flex; align-items: center; justify-content: center;
+  color: var(--faint); font-size: 10px; border: 1px dashed var(--line-strong); }
+.avatarwrap { flex-shrink: 0; border-radius: 50%; }
+.avatarwrap:hover .avatar { opacity: 0.8; }
+.star { color: var(--accent); }
+.starbtn { color: var(--faint); font-size: 17px; padding: 0 2px; }
+.starbtn.on { color: var(--accent); }
+.dossier {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding-bottom: 16px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.dossierstats { flex: 1; min-width: 240px; }
+.minihours { width: 240px; flex-shrink: 0; }
+.fieldrow2 { display: flex; gap: 10px; }
+.fieldrow2 label { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.fieldrow2 .field { width: 100%; }
+.profmeta { color: var(--faint); font-size: 11.5px; margin: 6px 0 8px; }
+.hdflag {
+  position: absolute; top: 5px; left: 5px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+  color: #16130f; background: var(--accent);
+  padding: 1px 4px; border-radius: 3px;
+}
+.cropmodal { max-width: 348px; }
+.cropview {
+  width: 300px; height: 300px; margin: 0 auto;
+  overflow: hidden; border-radius: var(--r);
+  background: #000; touch-action: none; cursor: grab; position: relative;
+}
+.cropview img { position: absolute; top: 0; left: 0; max-width: none; user-select: none; }
+.sugface {
+  width: 20px; height: 20px; border-radius: 50%;
+  object-fit: cover; vertical-align: -5px; margin-right: 3px;
+}

@@ -18,6 +18,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
   const [openChange, setOpenChange] = useState(null) // suggestion id with picker open
   const [newBuck, setNewBuck] = useState('')
   const [keep, setKeep] = useState(photo.keep === true)
+  const [faces, setFaces] = useState({})
 
   useEffect(() => {
     setTags(photo.tags || [])
@@ -46,11 +47,20 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
       .then(({ data }) => setSuggestions(data || []))
     supabase
       .from('bucks')
-      .select('id,name,status')
+      .select('id,name,status,avatar_path')
       .order('name')
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         buckCache = data || []
         setBucks(buckCache)
+        const withAv = buckCache.filter((b) => b.avatar_path)
+        if (withAv.length) {
+          const { data: signed } = await supabase.storage
+            .from('trail-photos')
+            .createSignedUrls(withAv.map((b) => b.avatar_path), 3600)
+          const m = {}
+          signed?.forEach((s, i) => { if (s.signedUrl) m[withAv[i].id] = s.signedUrl })
+          setFaces(m)
+        }
       })
   }, [photo])
 
@@ -355,6 +365,9 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
                       <div className="sugtext">
                         <span className="sugname" style={{ color }}>
                           {i + 1} ·{' '}
+                          {s.label === 'match' && faces[s.buck_id] && (
+                            <img className="sugface" src={faces[s.buck_id]} alt="" />
+                          )}
                           {s.label === 'match'
                             ? `${buckName(s.buck_id)}? ${Math.round((s.confidence || 0) * 100)}%`
                             : s.label === 'new_buck'
