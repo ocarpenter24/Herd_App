@@ -165,9 +165,10 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
   }
 
   async function dismissSuggestion(sug) {
+    // 'unsure' = human couldn't tell either; not counted as a wrong AI guess
     await supabase
       .from('buck_match_suggestions')
-      .update({ status: 'rejected' })
+      .update({ status: 'unsure' })
       .eq('id', sug.id)
     markResolved(sug.id, { type: 'dismissed' })
   }
@@ -253,7 +254,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
                     {s.res?.type === 'doe'
                       ? 'Doe'
                       : s.res?.type === 'dismissed'
-                      ? 'Skipped'
+                      ? 'Unsure'
                       : i + 1}
                   </i>
                 </span>
@@ -343,7 +344,7 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
                           ? s.res.name + ' ✓'
                           : s.res.type === 'doe'
                           ? 'Doe'
-                          : 'Skipped'}
+                          : 'Unsure'}
                       </span>
                     </div>
                   )
@@ -362,22 +363,38 @@ export default function PhotoViewer({ photo, camera, onClose, onPrev, onNext, on
                         </span>
                         <span className="sugwhy">{s.reasoning}</span>
                       </div>
-                      <div className="sugbtns">
-                        {s.label === 'match' && (
+                      <div className="sugbtns col">
+                        <div className="sugbtnrow">
+                          {s.label === 'match' && (
+                            <button
+                              className="btn primary sm"
+                              title={'Confirm ' + buckName(s.buck_id)}
+                              onClick={() => resolveAsBuck(s, s.buck_id)}
+                            >
+                              ✓
+                            </button>
+                          )}
+                          {s.label !== 'match' && s.label !== 'new_buck' && (
+                            <button
+                              className="btn primary sm"
+                              title="Confirm — can't tell who this is"
+                              onClick={() => dismissSuggestion(s)}
+                            >
+                              ✓
+                            </button>
+                          )}
                           <button
-                            className="btn primary sm"
-                            title={'Confirm ' + buckName(s.buck_id)}
-                            onClick={() => resolveAsBuck(s, s.buck_id)}
+                            className="btn sm"
+                            onClick={() => setOpenChange(openChange === s.id ? null : s.id)}
                           >
-                            ✓
+                            {s.label === 'match' ? 'Change' : 'Identify'}
+                          </button>
+                        </div>
+                        {(s.label === 'match' || s.label === 'new_buck') && (
+                          <button className="btn quiet sm" onClick={() => dismissSuggestion(s)}>
+                            Unsure
                           </button>
                         )}
-                        <button
-                          className="btn sm"
-                          onClick={() => setOpenChange(openChange === s.id ? null : s.id)}
-                        >
-                          {s.label === 'match' ? 'Change' : 'Identify'}
-                        </button>
                       </div>
                     </div>
                     {openChange === s.id && (
