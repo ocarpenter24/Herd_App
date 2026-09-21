@@ -356,7 +356,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 }
 .buckside { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 64px; }
 .buckside textarea { width: 100%; resize: vertical; min-height: 110px; }
-.aidesc { color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.aidesc { color: var(--muted); font-size: 12.5px; line-height: 1.55; white-space: pre-line; }
 
 /* ============ Map ============ */
 .maplayout { display: flex; flex: 1; min-height: 0; }
